@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: pisom
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-TroqueEstaSenha123}
+      POSTGRES_DB: pisom_os
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pisom -d pisom_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://pisom:${DB_PASSWORD:-TroqueEstaSenha123}@db:5432/pisom_os
+      JWT_SECRET: ${JWT_SECRET:-troque-por-chave-segura-de-64-caracteres-aqui}
+      PORT: 3001
+      CORS_ORIGINS: https://sistema.pisommidias.com.br
+      NODE_ENV: production
+    expose:
+      - "3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://sistema.pisommidias.com.br/api/v1
+    restart: always
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: https://sistema.pisommidias.com.br/api/v1
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_etc:/etc/letsencrypt:ro
+      - certbot_var:/var/www/certbot:ro
+    depends_on:
+      - api
+      - web
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  postgres_data:
+  certbot_etc:
+  certbot_var:

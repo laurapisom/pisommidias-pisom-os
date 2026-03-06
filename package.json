@@ -1,0 +1,22 @@
+{
+  "name": "pisom-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sistema Operacional da Pisom Mídias - Plataforma all-in-one para agências",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build:api": "npm run build --workspace=apps/api",
+    "build:web": "npm run build --workspace=apps/web",
+    "db:generate": "npm run db:generate --workspace=apps/api",
+    "db:migrate": "npm run db:migrate --workspace=apps/api",
+    "db:seed": "npm run db:seed --workspace=apps/api"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
