@@ -8,3 +8,4 @@ dist/
 .DS_Store
 nginx/nginx-active.conf
 nginx/nginx.conf.bak
+.vercel
