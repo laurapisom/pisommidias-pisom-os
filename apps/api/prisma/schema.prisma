@@ -16,6 +16,13 @@ model Organization {
   name      String
   slug      String   @unique
   logo      String?
+  cnpj      String?
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  state     String?
+  zipCode   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -39,6 +46,24 @@ model Organization {
   contentPosts        ContentPost[]
   contentIdeas        ContentIdea[]
   clientProfiles      ClientContentProfile[]
+  // Financial Core
+  bankAccounts        BankAccount[]
+  bankTransfers       BankTransfer[]
+  financialCategories FinancialCategory[]
+  financialEntries    FinancialEntry[]
+  financialRecurrences FinancialRecurrence[]
+  cashFlowSnapshots   CashFlowSnapshot[]
+  reconciliationImports BankReconciliationImport[]
+  asaasAccounts       AsaasAccount[]
+  asaasCustomers      AsaasCustomer[]
+  asaasPayments       AsaasPayment[]
+  asaasSubscriptions  AsaasSubscription[]
+  asaasWebhooks       AsaasWebhook[]
+  billingDocuments    BillingDocument[]
+  financialNotifications FinancialNotification[]
+  syncLogs            SyncLog[]
+  systemSettings      SystemSetting[]
+  financialPermissions FinancialPermission[]
 
   @@map("organizations")
 }
@@ -73,6 +98,10 @@ model User {
   contentPostsAssigned ContentPost[] @relation("ContentPostAssignee")
   contentIdeasCreated  ContentIdea[] @relation("ContentIdeaCreator")
   contentVersions      ContentVersion[]
+  // Financial Core
+  financialEntriesCreated   FinancialEntry[] @relation("EntryCreator")
+  financialEntriesApproved  FinancialEntry[] @relation("EntryApprover")
+  financialPermissions      FinancialPermission[]
 
   @@map("users")
 }
@@ -148,6 +177,36 @@ model AuditLog {
   @@index([organizationId, entity, entityId])
   @@index([organizationId, createdAt])
   @@map("audit_logs")
+}
+
+// ============================================================
+// PERMISSÕES FINANCEIRAS GRANULARES
+// ============================================================
+
+model FinancialPermission {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           FinancialRole @default(VIEWER)
+  permissions    Json     // JSON with granular permissions
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("financial_permissions")
+}
+
+enum FinancialRole {
+  ADMIN_MASTER
+  FINANCIAL
+  MANAGER
+  FINANCIAL_SUPPORT
+  EXTERNAL_CLIENT
+  AUDITOR
+  VIEWER
 }
 
 // ============================================================
@@ -262,7 +321,7 @@ model PipelineStage {
   name       String
   color      String?
   position   Int      @default(0)
-  probability Int     @default(0)  // 0-100%
+  probability Int     @default(0)
   slaHours   Int?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -681,6 +740,8 @@ enum ContractStatus {
 }
 
 enum BillingCycle {
+  WEEKLY
+  BIWEEKLY
   MONTHLY
   QUARTERLY
   SEMIANNUAL
@@ -746,7 +807,7 @@ enum InvoiceType {
 }
 
 // ============================================================
-// FINANCEIRO: DESPESAS, CENTROS DE CUSTO E FLUXO DE CAIXA
+// FINANCEIRO: DESPESAS, CENTROS DE CUSTO E FLUXO DE CAIXA (LEGADO)
 // ============================================================
 
 model ExpenseCategory {
@@ -771,13 +832,19 @@ model CostCenter {
   id             String   @id @default(cuid())
   organizationId String
   name           String
+  code           String?
+  description    String?
+  parentId       String?
   type           CostCenterType @default(GENERAL)
   referenceId    String?
   isActive       Boolean  @default(true)
+  budget         Decimal? @db.Decimal(12, 2)
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  expenses     Expense[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses         Expense[]
+  financialEntries FinancialEntry[]
 
   @@unique([organizationId, name])
   @@map("cost_centers")
@@ -842,7 +909,827 @@ enum ExpenseType {
   INVESTMENT
 }
 
-// ─── Content + Editorial Calendar ─────────────────────────────────────
+// ============================================================
+// FINANCEIRO CORE: CONTAS BANCÁRIAS
+// ============================================================
+
+model BankAccount {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  type           BankAccountType @default(CHECKING)
+  bankName       String?
+  bankCode       String?
+  agency         String?
+  accountNumber  String?
+  pixKey         String?
+  pixKeyType     String?
+  initialBalance Decimal         @db.Decimal(14, 2) @default(0)
+  currentBalance Decimal         @db.Decimal(14, 2) @default(0)
+  reconciledBalance Decimal      @db.Decimal(14, 2) @default(0)
+  projectedBalance  Decimal      @db.Decimal(14, 2) @default(0)
+  isPrimary      Boolean         @default(false)
+  isActive       Boolean         @default(true)
+  color          String?
+  notes          String?
+  closedPeriods  Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  financialEntries   FinancialEntry[]
+  transfersFrom      BankTransfer[]            @relation("TransferFrom")
+  transfersTo        BankTransfer[]            @relation("TransferTo")
+  reconciliationImports BankReconciliationImport[]
+
+  @@index([organizationId, isActive])
+  @@map("bank_accounts")
+}
+
+enum BankAccountType {
+  CHECKING
+  SAVINGS
+  INVESTMENT
+  CASH
+  DIGITAL
+  OTHER
+}
+
+model BankTransfer {
+  id                String   @id @default(cuid())
+  organizationId    String
+  fromAccountId     String
+  toAccountId       String
+  amount            Decimal  @db.Decimal(14, 2)
+  description       String?
+  transferDate      DateTime
+  createdAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fromAccount  BankAccount  @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccount    BankAccount  @relation("TransferTo", fields: [toAccountId], references: [id])
+
+  @@index([organizationId, transferDate])
+  @@map("bank_transfers")
+}
+
+// ============================================================
+// FINANCEIRO CORE: CATEGORIAS FINANCEIRAS
+// ============================================================
+
+model FinancialCategory {
+  id             String            @id @default(cuid())
+  organizationId String
+  name           String
+  type           FinancialCatType
+  color          String?
+  icon           String?
+  parentId       String?
+  isActive       Boolean           @default(true)
+  isSystem       Boolean           @default(false)
+  position       Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       FinancialCategory?    @relation("FinancialCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     FinancialCategory[]   @relation("FinancialCategoryTree")
+  entries      FinancialEntry[]
+
+  @@unique([organizationId, name, type])
+  @@map("financial_categories")
+}
+
+enum FinancialCatType {
+  REVENUE
+  EXPENSE
+}
+
+// ============================================================
+// FINANCEIRO CORE: LANÇAMENTOS FINANCEIROS
+// ============================================================
+
+model FinancialEntry {
+  id                String              @id @default(cuid())
+  organizationId    String
+  type              EntryType
+  status            EntryStatus         @default(PENDING)
+  description       String
+  notes             String?             @db.Text
+  value             Decimal             @db.Decimal(14, 2)
+  currency          String              @default("BRL")
+  competenceDate    DateTime
+  dueDate           DateTime
+  paymentDate       DateTime?
+  paidValue         Decimal?            @db.Decimal(14, 2)
+  documentNumber    String?
+  categoryId        String?
+  costCenterId      String?
+  bankAccountId     String?
+  paymentMethod     PaymentMethod?
+  // Relationships
+  contactName       String?
+  contactDocument   String?
+  contactType       ContactFinType?
+  // Recurrence
+  recurrenceId      String?
+  installmentNumber Int?
+  totalInstallments Int?
+  parentEntryId     String?
+  // Tags
+  tags              String[]
+  // Audit
+  createdById       String
+  approvedById      String?
+  approvedAt        DateTime?
+  // Soft delete
+  deletedAt         DateTime?
+  deletedById       String?
+  deleteReason      String?
+  // Asaas link
+  asaasPaymentId    String?
+  // Version
+  version           Int                 @default(1)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category       FinancialCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter     CostCenter?         @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  bankAccount    BankAccount?        @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  createdBy      User                @relation("EntryCreator", fields: [createdById], references: [id])
+  approvedBy     User?               @relation("EntryApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  recurrence     FinancialRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  parentEntry    FinancialEntry?     @relation("EntryInstallments", fields: [parentEntryId], references: [id], onDelete: SetNull)
+  installments   FinancialEntry[]    @relation("EntryInstallments")
+  attachments    FinancialAttachment[]
+  timeline       FinancialEntryEvent[]
+  reconciliationMatches BankReconciliationMatch[]
+
+  @@index([organizationId, type, status])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, competenceDate])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, costCenterId])
+  @@index([organizationId, bankAccountId])
+  @@index([organizationId, contactName])
+  @@index([asaasPaymentId])
+  @@index([recurrenceId])
+  @@index([parentEntryId])
+  @@index([organizationId, deletedAt])
+  @@map("financial_entries")
+}
+
+enum EntryType {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum EntryStatus {
+  PENDING
+  CONFIRMED
+  RECEIVED
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+  PARTIALLY_PAID
+}
+
+enum PaymentMethod {
+  BOLETO
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  BANK_TRANSFER
+  CASH
+  CHECK
+  OTHER
+}
+
+enum ContactFinType {
+  CLIENT
+  SUPPLIER
+  EMPLOYEE
+  OTHER
+}
+
+model FinancialEntryEvent {
+  id        String   @id @default(cuid())
+  entryId   String
+  event     String
+  details   String?  @db.Text
+  metadata  Json?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, createdAt])
+  @@map("financial_entry_events")
+}
+
+model FinancialAttachment {
+  id        String   @id @default(cuid())
+  entryId   String
+  fileName  String
+  fileUrl   String
+  fileType  String?
+  fileSize  Int?
+  createdAt DateTime @default(now())
+
+  entry FinancialEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+  @@map("financial_attachments")
+}
+
+// ============================================================
+// FINANCEIRO CORE: RECORRÊNCIAS
+// ============================================================
+
+model FinancialRecurrence {
+  id                String          @id @default(cuid())
+  organizationId    String
+  type              EntryType
+  description       String
+  value             Decimal         @db.Decimal(14, 2)
+  categoryId        String?
+  costCenterId      String?
+  bankAccountId     String?
+  contactName       String?
+  contactDocument   String?
+  contactType       ContactFinType?
+  frequency         BillingCycle    @default(MONTHLY)
+  dayOfMonth        Int             @default(10)
+  startDate         DateTime
+  endDate           DateTime?
+  nextDueDate       DateTime?
+  status            RecurrenceStatus @default(ACTIVE)
+  totalGenerated    Int             @default(0)
+  asaasSubscriptionId String?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entries      FinancialEntry[]
+
+  @@index([organizationId, status])
+  @@index([nextDueDate])
+  @@map("financial_recurrences")
+}
+
+enum RecurrenceStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  COMPLETED
+}
+
+// ============================================================
+// FINANCEIRO CORE: FLUXO DE CAIXA SNAPSHOTS
+// ============================================================
+
+model CashFlowSnapshot {
+  id                String   @id @default(cuid())
+  organizationId    String
+  date              DateTime
+  openingBalance    Decimal  @db.Decimal(14, 2)
+  totalInflows      Decimal  @db.Decimal(14, 2)
+  totalOutflows     Decimal  @db.Decimal(14, 2)
+  closingBalance    Decimal  @db.Decimal(14, 2)
+  projectedInflows  Decimal  @db.Decimal(14, 2)
+  projectedOutflows Decimal  @db.Decimal(14, 2)
+  projectedBalance  Decimal  @db.Decimal(14, 2)
+  bankAccountId     String?
+  costCenterId      String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, date, bankAccountId, costCenterId])
+  @@index([organizationId, date])
+  @@map("cash_flow_snapshots")
+}
+
+// ============================================================
+// FINANCEIRO CORE: CONCILIAÇÃO BANCÁRIA
+// ============================================================
+
+model BankReconciliationImport {
+  id             String                  @id @default(cuid())
+  organizationId String
+  bankAccountId  String
+  fileName       String
+  fileUrl        String?
+  fileFormat     String                  @default("OFX")
+  importDate     DateTime                @default(now())
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  totalItems     Int                     @default(0)
+  matchedItems   Int                     @default(0)
+  unmatchedItems Int                     @default(0)
+  status         ReconciliationImportStatus @default(PENDING)
+  processedAt    DateTime?
+  closedAt       DateTime?
+  closedById     String?
+  notes          String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount  BankAccount               @relation(fields: [bankAccountId], references: [id])
+  items        BankReconciliationItem[]
+
+  @@index([organizationId, bankAccountId])
+  @@index([organizationId, status])
+  @@map("bank_reconciliation_imports")
+}
+
+enum ReconciliationImportStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  CLOSED
+  ERROR
+}
+
+model BankReconciliationItem {
+  id             String   @id @default(cuid())
+  importId       String
+  transactionDate DateTime
+  description    String
+  amount         Decimal  @db.Decimal(14, 2)
+  type           String   // CREDIT or DEBIT
+  externalId     String?
+  fitId          String?
+  checkNumber    String?
+  memo           String?
+  status         ReconciliationItemStatus @default(UNMATCHED)
+  createdAt      DateTime @default(now())
+
+  import  BankReconciliationImport  @relation(fields: [importId], references: [id], onDelete: Cascade)
+  matches BankReconciliationMatch[]
+
+  @@index([importId, status])
+  @@map("bank_reconciliation_items")
+}
+
+enum ReconciliationItemStatus {
+  MATCHED
+  UNMATCHED
+  IGNORED
+  CREATED
+}
+
+model BankReconciliationMatch {
+  id               String   @id @default(cuid())
+  reconciliationItemId String
+  entryId          String
+  matchType        MatchType @default(MANUAL)
+  confidence       Decimal?  @db.Decimal(5, 2)
+  matchedAt        DateTime  @default(now())
+  matchedById      String?
+  notes            String?
+
+  reconciliationItem BankReconciliationItem @relation(fields: [reconciliationItemId], references: [id], onDelete: Cascade)
+  entry              FinancialEntry        @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([reconciliationItemId, entryId])
+  @@map("bank_reconciliation_matches")
+}
+
+enum MatchType {
+  AUTO
+  MANUAL
+  SUGGESTED
+  RULE
+}
+
+// ============================================================
+// ASAAS: CONTAS E CONFIGURAÇÃO
+// ============================================================
+
+model AsaasAccount {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  environment    AsaasEnvironment @default(SANDBOX)
+  apiKey         String         // encrypted
+  walletId       String?
+  isActive       Boolean        @default(true)
+  webhookToken   String?
+  lastSyncAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, environment])
+  @@map("asaas_accounts")
+}
+
+enum AsaasEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+// ============================================================
+// ASAAS: CLIENTES FINANCEIROS
+// ============================================================
+
+model AsaasCustomer {
+  id                String   @id @default(cuid())
+  organizationId    String
+  externalId        String   // Asaas customer ID (cus_xxx)
+  name              String
+  email             String?
+  cpfCnpj           String
+  phone             String?
+  mobilePhone       String?
+  address           String?
+  addressNumber     String?
+  complement        String?
+  province          String?
+  postalCode        String?
+  cityName          String?
+  state             String?
+  country           String?  @default("BR")
+  personType        String?  // FISICA or JURIDICA
+  // Sync fields
+  syncStatus        SyncStatus @default(SYNCED)
+  lastSyncedAt      DateTime?
+  lastRemoteHash    String?
+  lastLocalHash     String?
+  syncError         String?
+  sourceOfTruth     String   @default("ASAAS")
+  version           Int      @default(1)
+  // Local reference
+  localContactId    String?
+  localCompanyId    String?
+  remotePayload     Json?
+  deletedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payments     AsaasPayment[]
+  subscriptions AsaasSubscription[]
+
+  @@unique([organizationId, externalId])
+  @@unique([organizationId, cpfCnpj])
+  @@index([organizationId, syncStatus])
+  @@index([organizationId, email])
+  @@map("asaas_customers")
+}
+
+enum SyncStatus {
+  SYNCED
+  PENDING
+  ERROR
+  DIVERGENT
+  LOCAL_ONLY
+  REMOTE_ONLY
+}
+
+// ============================================================
+// ASAAS: COBRANÇAS / PAGAMENTOS
+// ============================================================
+
+model AsaasPayment {
+  id                String   @id @default(cuid())
+  organizationId    String
+  externalId        String   // Asaas payment ID (pay_xxx)
+  customerId        String   // FK to AsaasCustomer
+  asaasCustomerId   String   // Asaas customer ID (cus_xxx)
+  subscriptionId    String?  // FK to AsaasSubscription
+  // Payment data
+  billingType       String   // BOLETO, PIX, CREDIT_CARD, UNDEFINED
+  value             Decimal  @db.Decimal(14, 2)
+  netValue          Decimal? @db.Decimal(14, 2)
+  discount          Decimal? @db.Decimal(14, 2)
+  interest          Decimal? @db.Decimal(14, 2)
+  fine              Decimal? @db.Decimal(14, 2)
+  description       String?
+  externalReference String?
+  dueDate           DateTime
+  paymentDate       DateTime?
+  clientPaymentDate DateTime?
+  originalDueDate   DateTime?
+  // Status
+  status            String   // PENDING, RECEIVED, CONFIRMED, OVERDUE, etc.
+  // Links
+  invoiceUrl        String?
+  bankSlipUrl       String?
+  pixQrCodeUrl      String?
+  pixPayload        String?  @db.Text
+  transactionReceiptUrl String?
+  // Refund
+  refundedValue     Decimal? @db.Decimal(14, 2)
+  refundedAt        DateTime?
+  // Sync fields
+  syncStatus        SyncStatus @default(SYNCED)
+  lastSyncedAt      DateTime?
+  lastRemoteHash    String?
+  lastLocalHash     String?
+  syncError         String?
+  sourceOfTruth     String   @default("ASAAS")
+  version           Int      @default(1)
+  // Local references
+  localEntryId      String?
+  localInvoiceId    String?
+  remotePayload     Json?
+  deletedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer      AsaasCustomer      @relation(fields: [customerId], references: [id])
+  subscription  AsaasSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  statusHistory AsaasPaymentStatusHistory[]
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, status])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, customerId])
+  @@index([asaasCustomerId])
+  @@index([subscriptionId])
+  @@map("asaas_payments")
+}
+
+model AsaasPaymentStatusHistory {
+  id        String   @id @default(cuid())
+  paymentId String
+  status    String
+  source    String   @default("WEBHOOK") // WEBHOOK, API, MANUAL
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  payment AsaasPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId, createdAt])
+  @@map("asaas_payment_status_history")
+}
+
+// ============================================================
+// ASAAS: ASSINATURAS
+// ============================================================
+
+model AsaasSubscription {
+  id                String   @id @default(cuid())
+  organizationId    String
+  externalId        String   // Asaas subscription ID (sub_xxx)
+  customerId        String   // FK to AsaasCustomer
+  asaasCustomerId   String   // Asaas customer ID (cus_xxx)
+  // Subscription data
+  billingType       String
+  value             Decimal  @db.Decimal(14, 2)
+  cycle             String   // WEEKLY, BIWEEKLY, MONTHLY, etc.
+  description       String?
+  externalReference String?
+  nextDueDate       DateTime?
+  endDate           DateTime?
+  maxPayments       Int?
+  status            String   // ACTIVE, INACTIVE, EXPIRED
+  // Sync fields
+  syncStatus        SyncStatus @default(SYNCED)
+  lastSyncedAt      DateTime?
+  lastRemoteHash    String?
+  lastLocalHash     String?
+  syncError         String?
+  sourceOfTruth     String   @default("ASAAS")
+  version           Int      @default(1)
+  // Local references
+  localRecurrenceId String?
+  localContractId   String?
+  remotePayload     Json?
+  deletedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     AsaasCustomer @relation(fields: [customerId], references: [id])
+  payments     AsaasPayment[]
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@map("asaas_subscriptions")
+}
+
+// ============================================================
+// ASAAS: WEBHOOKS
+// ============================================================
+
+model AsaasWebhook {
+  id             String   @id @default(cuid())
+  organizationId String
+  url            String
+  email          String?
+  apiVersion     String?  @default("3")
+  enabled        Boolean  @default(true)
+  interrupted    Boolean  @default(false)
+  authToken      String?
+  events         String[] // PAYMENT_CREATED, PAYMENT_RECEIVED, etc.
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  webhookEvents  AsaasWebhookEvent[]
+
+  @@index([organizationId])
+  @@map("asaas_webhooks")
+}
+
+model AsaasWebhookEvent {
+  id             String   @id @default(cuid())
+  webhookId      String?
+  organizationId String?
+  eventType      String   // PAYMENT_CREATED, PAYMENT_CONFIRMED, etc.
+  eventId        String?  // Asaas event ID for idempotency
+  rawPayload     Json
+  status         WebhookEventStatus @default(PENDING)
+  processedAt    DateTime?
+  errorMessage   String?  @db.Text
+  retryCount     Int      @default(0)
+  maxRetries     Int      @default(5)
+  nextRetryAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  webhook AsaasWebhook? @relation(fields: [webhookId], references: [id], onDelete: SetNull)
+
+  @@unique([eventId])
+  @@index([status, nextRetryAt])
+  @@index([eventType, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("asaas_webhook_events")
+}
+
+enum WebhookEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+  DLQ
+}
+
+// ============================================================
+// DOCUMENTOS FINANCEIROS
+// ============================================================
+
+model BillingDocument {
+  id             String              @id @default(cuid())
+  organizationId String
+  type           BillingDocumentType
+  number         String?
+  title          String
+  description    String?            @db.Text
+  // Links
+  customerId     String?
+  paymentId      String?
+  entryId        String?
+  subscriptionId String?
+  // Content
+  templateId     String?
+  variables      Json?
+  htmlContent    String?            @db.Text
+  pdfUrl         String?
+  // Status
+  status         DocumentStatus     @default(DRAFT)
+  sentAt         DateTime?
+  sentTo         String?
+  // Versioning
+  version        Int                @default(1)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, type, status])
+  @@index([organizationId, customerId])
+  @@map("billing_documents")
+}
+
+enum BillingDocumentType {
+  INVOICE
+  RECEIPT
+  CONTRACT
+  VOUCHER
+  ACCEPTANCE_TERM
+}
+
+enum DocumentStatus {
+  DRAFT
+  GENERATED
+  SENT
+  VIEWED
+  CANCELLED
+}
+
+// ============================================================
+// NOTIFICAÇÕES FINANCEIRAS
+// ============================================================
+
+model FinancialNotification {
+  id             String             @id @default(cuid())
+  organizationId String
+  type           NotificationType
+  title          String
+  message        String             @db.Text
+  entityType     String?
+  entityId       String?
+  recipientId    String?
+  recipientEmail String?
+  channel        NotificationChannel @default(INTERNAL)
+  status         NotificationStatus  @default(PENDING)
+  sentAt         DateTime?
+  readAt         DateTime?
+  metadata       Json?
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, recipientId, status])
+  @@index([organizationId, type, createdAt])
+  @@map("financial_notifications")
+}
+
+enum NotificationType {
+  DUE_DATE_REMINDER
+  OVERDUE_ALERT
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  SYNC_ERROR
+  SYNC_DIVERGENCE
+  SUBSCRIPTION_RENEWAL
+  CARD_DECLINED
+  RECONCILIATION_PENDING
+  PERIOD_CLOSING
+  CASH_FLOW_RISK
+}
+
+enum NotificationChannel {
+  INTERNAL
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
+
+// ============================================================
+// SYNC LOGS
+// ============================================================
+
+model SyncLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  entity         String
+  entityId       String?
+  action         String
+  direction      String   // PUSH, PULL, RECONCILE
+  status         String   // SUCCESS, ERROR, SKIPPED
+  details        String?  @db.Text
+  metadata       Json?
+  duration       Int?     // ms
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, entity, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@map("sync_logs")
+}
+
+// ============================================================
+// CONFIGURAÇÕES DO SISTEMA
+// ============================================================
+
+model SystemSetting {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  value          Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@map("system_settings")
+}
+
+// ============================================================
+// Content + Editorial Calendar
+// ============================================================
 
 model ClientContentProfile {
   id             String   @id @default(cuid())
