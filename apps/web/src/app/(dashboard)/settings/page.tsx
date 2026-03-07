@@ -1,0 +1,558 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+import { cn } from '@/lib/cn';
+import {
+  User,
+  Building2,
+  Users,
+  Shield,
+  Mail,
+  Copy,
+  Trash2,
+  Plus,
+} from 'lucide-react';
+
+const TABS = [
+  { key: 'perfil', label: 'Perfil', icon: User },
+  { key: 'organizacao', label: 'Organização', icon: Building2 },
+  { key: 'equipe', label: 'Equipe', icon: Users },
+] as const;
+
+type TabKey = (typeof TABS)[number]['key'];
+
+const ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'MEMBER', 'VIEWER'] as const;
+
+const roleBadgeColors: Record<string, string> = {
+  OWNER: 'bg-purple-100 text-purple-700',
+  ADMIN: 'bg-blue-100 text-blue-700',
+  MANAGER: 'bg-amber-100 text-amber-700',
+  MEMBER: 'bg-gray-100 text-gray-700',
+  VIEWER: 'bg-green-100 text-green-700',
+};
+
+const inputClass =
+  'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-pisom-500 focus:outline-none focus:ring-2 focus:ring-pisom-200';
+
+const btnPrimary =
+  'bg-pisom-600 text-white rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-pisom-700 disabled:opacity-50 disabled:cursor-not-allowed';
+
+function getInitials(firstName?: string, lastName?: string) {
+  return `${(firstName || '')[0] || ''}${(lastName || '')[0] || ''}`.toUpperCase();
+}
+
+export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<TabKey>('perfil');
+  const [loading, setLoading] = useState(true);
+
+  // User state
+  const [user, setUser] = useState<any>(null);
+  const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '' });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState('');
+
+  // Organization state
+  const [orgName, setOrgName] = useState('');
+  const [orgId, setOrgId] = useState('');
+  const [orgSaving, setOrgSaving] = useState(false);
+  const [orgMsg, setOrgMsg] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  // Team state
+  const [team, setTeam] = useState<any[]>([]);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('MEMBER');
+  const [inviting, setInviting] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [me, teamData] = await Promise.all([api.getMe(), api.getTeam()]);
+        setUser(me);
+        setProfileForm({ firstName: me.firstName || '', lastName: me.lastName || '' });
+        setOrgName(me.organization?.name || '');
+        setOrgId(me.organization?.id || '');
+        setTeam(teamData);
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const handleProfileSave = async () => {
+    setProfileSaving(true);
+    setProfileMsg('');
+    try {
+      const payload: any = {
+        firstName: profileForm.firstName,
+        lastName: profileForm.lastName,
+      };
+      if (passwordForm.newPassword) {
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+          setProfileMsg('As senhas não coincidem.');
+          setProfileSaving(false);
+          return;
+        }
+        payload.currentPassword = passwordForm.currentPassword;
+        payload.newPassword = passwordForm.newPassword;
+      }
+      await api.updateMe(payload);
+      setProfileMsg('Perfil atualizado com sucesso.');
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err: any) {
+      setProfileMsg(err.message || 'Erro ao atualizar perfil.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleOrgSave = async () => {
+    setOrgSaving(true);
+    setOrgMsg('');
+    try {
+      await api.updateOrganization({ name: orgName });
+      setOrgMsg('Organização atualizada com sucesso.');
+    } catch (err: any) {
+      setOrgMsg(err.message || 'Erro ao atualizar organização.');
+    } finally {
+      setOrgSaving(false);
+    }
+  };
+
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(orgId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleInvite = async () => {
+    setInviting(true);
+    try {
+      await api.inviteMember({ email: inviteEmail, role: inviteRole });
+      const teamData = await api.getTeam();
+      setTeam(teamData);
+      setInviteEmail('');
+      setInviteRole('MEMBER');
+      setShowInvite(false);
+    } catch {
+      // ignore
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRoleChange = async (memberId: string, role: string) => {
+    try {
+      await api.updateMemberRole(memberId, role);
+      setTeam((prev) =>
+        prev.map((m) => (m.id === memberId ? { ...m, role } : m)),
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRemove = async (memberId: string) => {
+    try {
+      await api.removeMember(memberId);
+      setTeam((prev) => prev.filter((m) => m.id !== memberId));
+      setConfirmRemove(null);
+    } catch {
+      // ignore
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-pisom-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6 p-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Gerencie seu perfil e sua organização
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+                activeTab === tab.key
+                  ? 'bg-pisom-50 text-pisom-700'
+                  : 'text-gray-600 hover:text-gray-900',
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'perfil' && (
+        <div className="space-y-6">
+          {/* Profile Info */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+              Informações do Perfil
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Nome
+                </label>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={profileForm.firstName}
+                  onChange={(e) =>
+                    setProfileForm((p) => ({ ...p, firstName: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Sobrenome
+                </label>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={profileForm.lastName}
+                  onChange={(e) =>
+                    setProfileForm((p) => ({ ...p, lastName: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  <Mail className="mr-1 inline h-4 w-4" />
+                  E-mail
+                </label>
+                <input
+                  type="email"
+                  className={cn(inputClass, 'bg-gray-50 text-gray-500')}
+                  value={user?.email || ''}
+                  readOnly
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Change Password */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+              Alterar Senha
+            </h2>
+            <div className="grid gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Senha Atual
+                </label>
+                <input
+                  type="password"
+                  className={inputClass}
+                  value={passwordForm.currentPassword}
+                  onChange={(e) =>
+                    setPasswordForm((p) => ({
+                      ...p,
+                      currentPassword: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Nova Senha
+                  </label>
+                  <input
+                    type="password"
+                    className={inputClass}
+                    value={passwordForm.newPassword}
+                    onChange={(e) =>
+                      setPasswordForm((p) => ({
+                        ...p,
+                        newPassword: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Confirmar Nova Senha
+                  </label>
+                  <input
+                    type="password"
+                    className={inputClass}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) =>
+                      setPasswordForm((p) => ({
+                        ...p,
+                        confirmPassword: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Save */}
+          <div className="flex items-center gap-4">
+            <button
+              className={btnPrimary}
+              disabled={profileSaving}
+              onClick={handleProfileSave}
+            >
+              {profileSaving ? 'Salvando...' : 'Salvar Alterações'}
+            </button>
+            {profileMsg && (
+              <span className="text-sm text-gray-600">{profileMsg}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'organizacao' && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+              <Building2 className="mr-2 inline h-5 w-5" />
+              Dados da Organização
+            </h2>
+            <div className="grid gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Nome da Organização
+                </label>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  ID da Organização
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className={cn(inputClass, 'bg-gray-50 font-mono text-xs text-gray-500')}
+                    value={orgId}
+                    readOnly
+                  />
+                  <button
+                    onClick={handleCopyId}
+                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                  >
+                    <Copy className="h-4 w-4" />
+                    {copied ? 'Copiado!' : 'Copiar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              className={btnPrimary}
+              disabled={orgSaving}
+              onClick={handleOrgSave}
+            >
+              {orgSaving ? 'Salvando...' : 'Salvar Alterações'}
+            </button>
+            {orgMsg && (
+              <span className="text-sm text-gray-600">{orgMsg}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'equipe' && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">
+                <Users className="mr-2 inline h-5 w-5" />
+                Membros da Equipe
+              </h2>
+              <button
+                onClick={() => setShowInvite(!showInvite)}
+                className={btnPrimary + ' flex items-center gap-2'}
+              >
+                <Plus className="h-4 w-4" />
+                Convidar Membro
+              </button>
+            </div>
+
+            {/* Invite form */}
+            {showInvite && (
+              <div className="mb-6 rounded-lg border border-pisom-200 bg-pisom-50 p-4">
+                <h3 className="mb-3 text-sm font-medium text-gray-900">
+                  Convidar novo membro
+                </h3>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <input
+                      type="email"
+                      placeholder="E-mail do membro"
+                      className={inputClass}
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                    />
+                  </div>
+                  <select
+                    className={cn(inputClass, 'w-40')}
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                  >
+                    {ROLES.filter((r) => r !== 'OWNER').map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className={btnPrimary}
+                    disabled={inviting || !inviteEmail}
+                    onClick={handleInvite}
+                  >
+                    {inviting ? 'Enviando...' : 'Enviar'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Team list */}
+            <div className="divide-y divide-gray-100">
+              {team.map((member) => {
+                const u = member.user || member;
+                return (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-4 py-4 first:pt-0 last:pb-0"
+                  >
+                    {/* Avatar */}
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-pisom-100 text-sm font-semibold text-pisom-700">
+                      {getInitials(u.firstName, u.lastName)}
+                    </div>
+
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-900">
+                        {u.firstName} {u.lastName}
+                      </p>
+                      <p className="flex items-center gap-1 truncate text-xs text-gray-500">
+                        <Mail className="h-3 w-3" />
+                        {u.email}
+                      </p>
+                    </div>
+
+                    {/* Status badge */}
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
+                        member.isActive
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-100 text-gray-500',
+                      )}
+                    >
+                      {member.isActive ? 'Ativo' : 'Inativo'}
+                    </span>
+
+                    {/* Role badge */}
+                    <span
+                      className={cn(
+                        'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                        roleBadgeColors[member.role] || 'bg-gray-100 text-gray-700',
+                      )}
+                    >
+                      <Shield className="h-3 w-3" />
+                      {member.role}
+                    </span>
+
+                    {/* Role select */}
+                    <select
+                      className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none focus:ring-2 focus:ring-pisom-200"
+                      value={member.role}
+                      disabled={member.role === 'OWNER'}
+                      onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Remove button */}
+                    {member.role !== 'OWNER' && (
+                      <>
+                        {confirmRemove === member.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleRemove(member.id)}
+                              className="rounded-lg bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              onClick={() => setConfirmRemove(null)}
+                              className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmRemove(member.id)}
+                            className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                            title="Remover membro"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+              {team.length === 0 && (
+                <p className="py-8 text-center text-sm text-gray-500">
+                  Nenhum membro encontrado.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

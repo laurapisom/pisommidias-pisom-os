@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { ToastProvider } from '@/components/ui/Toast';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -27,9 +28,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="ml-[260px] min-h-screen p-6">{children}</main>
-    </div>
+    <ToastProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Sidebar />
+        <main className="ml-[260px] min-h-screen p-6">{children}</main>
+      </div>
+    </ToastProvider>
   );
 }

@@ -153,6 +153,10 @@ class ApiClient {
     return this.post<any>('/leads', data);
   }
 
+  updateLead(id: string, data: any) {
+    return this.patch<any>(`/leads/${id}`, data);
+  }
+
   // Contacts
   getContacts(search?: string) {
     const query = search ? `?search=${encodeURIComponent(search)}` : '';
@@ -163,6 +167,14 @@ class ApiClient {
     return this.post<any>('/contacts', data);
   }
 
+  getContact(id: string) {
+    return this.get<any>(`/contacts/${id}`);
+  }
+
+  updateContact(id: string, data: any) {
+    return this.patch<any>(`/contacts/${id}`, data);
+  }
+
   // Companies
   getCompanies(search?: string) {
     const query = search ? `?search=${encodeURIComponent(search)}` : '';
@@ -171,6 +183,14 @@ class ApiClient {
 
   createCompany(data: any) {
     return this.post<any>('/companies', data);
+  }
+
+  getCompany(id: string) {
+    return this.get<any>(`/companies/${id}`);
+  }
+
+  updateCompany(id: string, data: any) {
+    return this.patch<any>(`/companies/${id}`, data);
   }
 
   // Tasks
@@ -436,6 +456,27 @@ class ApiClient {
 
   deleteContentProfile(id: string) {
     return this.delete<any>(`/content/profiles/${id}`);
+  }
+
+  // Settings
+  updateMe(data: any) {
+    return this.patch<any>('/users/me', data);
+  }
+
+  updateOrganization(data: any) {
+    return this.patch<any>('/organizations/me', data);
+  }
+
+  inviteMember(data: any) {
+    return this.post<any>('/users/invite', data);
+  }
+
+  updateMemberRole(memberId: string, role: string) {
+    return this.patch<any>(`/users/team/${memberId}/role`, { role });
+  }
+
+  removeMember(memberId: string) {
+    return this.delete<any>(`/users/team/${memberId}`);
   }
 }
 
