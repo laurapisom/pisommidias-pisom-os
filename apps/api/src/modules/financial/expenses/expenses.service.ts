@@ -84,6 +84,28 @@ export class ExpensesService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  async update(organizationId: string, id: string, data: Record<string, any>) {
+    await this.ensureExists(organizationId, id);
+    const updateData: any = {};
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.value !== undefined) updateData.value = data.value;
+    if (data.dueDate !== undefined) updateData.dueDate = new Date(data.dueDate);
+    if (data.type !== undefined) updateData.type = data.type;
+    if (data.supplier !== undefined) updateData.supplier = data.supplier;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.categoryId !== undefined) updateData.categoryId = data.categoryId || null;
+    if (data.costCenterId !== undefined) updateData.costCenterId = data.costCenterId || null;
+    if (data.notes !== undefined) updateData.notes = data.notes;
+    return this.prisma.expense.update({
+      where: { id },
+      data: updateData,
+      include: {
+        category: { select: { id: true, name: true, color: true } },
+        costCenter: { select: { id: true, name: true, type: true } },
+      },
+    });
+  }
+
   async approve(organizationId: string, id: string, userId: string) {
     await this.ensureExists(organizationId, id);
     return this.prisma.expense.update({

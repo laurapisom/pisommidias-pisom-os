@@ -200,6 +200,7 @@ model Company {
   contacts     Contact[]
   leads        Lead[]
   deals        Deal[]
+  contracts    Contract[]
 
   @@index([organizationId])
   @@map("companies")
@@ -664,6 +665,7 @@ model Contract {
   updatedAt      DateTime       @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id])
   invoices     Invoice[]
 
   @@index([organizationId, status])

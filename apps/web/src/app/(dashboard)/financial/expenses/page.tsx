@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, CheckCircle2, XCircle, DollarSign } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Palette } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
@@ -17,24 +17,53 @@ const typeLabels: Record<string, string> = {
   FIXED: 'Fixa', VARIABLE: 'Variável', ONE_TIME: 'Pontual', INVESTMENT: 'Investimento',
 };
 
+const costCenterTypeLabels: Record<string, string> = {
+  CLIENT: 'Cliente', PROJECT: 'Projeto', SQUAD: 'Squad', DEPARTMENT: 'Departamento', GENERAL: 'Geral',
+};
+
+const defaultColors = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'];
+
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
-  const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ title: '', value: '', dueDate: '', type: 'FIXED', supplier: '' });
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [categories, setCategories] = useState<any[]>([]);
+  const [costCenters, setCostCenters] = useState<any[]>([]);
 
-  const load = () => {
+  // New expense form
+  const [showNew, setShowNew] = useState(false);
+  const [form, setForm] = useState({ title: '', value: '', dueDate: '', type: 'FIXED', supplier: '', description: '', categoryId: '', costCenterId: '', notes: '' });
+
+  // Edit modal
+  const [editExpense, setEditExpense] = useState<any>(null);
+  const [editForm, setEditForm] = useState<any>({});
+
+  // Category/CostCenter management
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatColor, setNewCatColor] = useState('#3B82F6');
+  const [showCCManager, setShowCCManager] = useState(false);
+  const [newCCName, setNewCCName] = useState('');
+  const [newCCType, setNewCCType] = useState('GENERAL');
+
+  const load = useCallback(() => {
     const params: Record<string, string> = {};
     if (filter) params.status = filter;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
     api.getExpenses(params).then((res: any) => setExpenses(res.data || [])).catch(console.error).finally(() => setLoading(false));
     api.getExpenseSummary().then(setSummary).catch(() => null);
-  };
+  }, [filter, startDate, endDate]);
 
-  useEffect(() => { load(); }, [filter]);
-  useEffect(() => { api.getExpenseCategories().then(setCategories).catch(() => null); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    api.getExpenseCategories().then(setCategories).catch(() => null);
+    api.getCostCenters().then(setCostCenters).catch(() => null);
+  }, []);
 
   const handleCreate = async () => {
     if (!form.title || !form.value || !form.dueDate) return;
@@ -44,10 +73,64 @@ export default function ExpensesPage() {
       dueDate: form.dueDate,
       type: form.type,
       supplier: form.supplier || undefined,
+      description: form.description || undefined,
+      categoryId: form.categoryId || undefined,
+      costCenterId: form.costCenterId || undefined,
+      notes: form.notes || undefined,
     });
     setShowNew(false);
-    setForm({ title: '', value: '', dueDate: '', type: 'FIXED', supplier: '' });
+    setForm({ title: '', value: '', dueDate: '', type: 'FIXED', supplier: '', description: '', categoryId: '', costCenterId: '', notes: '' });
     load();
+  };
+
+  const openEdit = (exp: any) => {
+    setEditExpense(exp);
+    setEditForm({
+      title: exp.title,
+      value: String(exp.value),
+      dueDate: exp.dueDate?.split('T')[0] || '',
+      type: exp.type,
+      supplier: exp.supplier || '',
+      description: exp.description || '',
+      categoryId: exp.categoryId || '',
+      costCenterId: exp.costCenterId || '',
+      notes: exp.notes || '',
+    });
+  };
+
+  const handleUpdate = async () => {
+    if (!editExpense) return;
+    await api.updateExpense(editExpense.id, {
+      title: editForm.title,
+      value: parseFloat(editForm.value),
+      dueDate: editForm.dueDate,
+      type: editForm.type,
+      supplier: editForm.supplier || undefined,
+      description: editForm.description || undefined,
+      categoryId: editForm.categoryId || undefined,
+      costCenterId: editForm.costCenterId || undefined,
+      notes: editForm.notes || undefined,
+    });
+    setEditExpense(null);
+    load();
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCatName) return;
+    await api.createExpenseCategory({ name: newCatName, color: newCatColor });
+    setNewCatName('');
+    setNewCatColor('#3B82F6');
+    const cats = await api.getExpenseCategories();
+    setCategories(cats);
+  };
+
+  const handleCreateCostCenter = async () => {
+    if (!newCCName) return;
+    await api.createCostCenter({ name: newCCName, type: newCCType });
+    setNewCCName('');
+    setNewCCType('GENERAL');
+    const ccs = await api.getCostCenters();
+    setCostCenters(ccs);
   };
 
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -59,11 +142,80 @@ export default function ExpensesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Despesas</h1>
           <p className="mt-1 text-gray-500">Contas a pagar e controle de custos</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="flex items-center gap-2 rounded-lg bg-pisom-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-pisom-700">
-          <Plus className="h-4 w-4" />
-          Nova Despesa
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowCatManager(!showCatManager)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <Tag className="h-4 w-4" /> Categorias
+          </button>
+          <button onClick={() => setShowCCManager(!showCCManager)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <FolderOpen className="h-4 w-4" /> Centros de Custo
+          </button>
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 rounded-lg bg-pisom-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-pisom-700">
+            <Plus className="h-4 w-4" /> Nova Despesa
+          </button>
+        </div>
       </div>
+
+      {/* Category Manager */}
+      {showCatManager && (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">Categorias de Despesa</h3>
+            <button onClick={() => setShowCatManager(false)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="mb-4 flex items-center gap-3">
+            <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Nome da categoria" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <div className="flex gap-1">
+              {defaultColors.map((c) => (
+                <button key={c} onClick={() => setNewCatColor(c)} className={cn('h-7 w-7 rounded-full border-2 transition', newCatColor === c ? 'border-gray-900 scale-110' : 'border-transparent')} style={{ backgroundColor: c }} />
+              ))}
+            </div>
+            <button onClick={handleCreateCategory} className="rounded-lg bg-pisom-600 px-4 py-2 text-sm font-medium text-white hover:bg-pisom-700">Criar</button>
+          </div>
+          {categories.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {categories.map((cat) => (
+                <span key={cat.id} className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-sm">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color || '#9CA3AF' }} />
+                  {cat.name}
+                  <span className="text-xs text-gray-400">({cat._count?.expenses || 0})</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cost Center Manager */}
+      {showCCManager && (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">Centros de Custo</h3>
+            <button onClick={() => setShowCCManager(false)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="mb-4 flex items-center gap-3">
+            <input value={newCCName} onChange={(e) => setNewCCName(e.target.value)} placeholder="Nome do centro de custo" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <select value={newCCType} onChange={(e) => setNewCCType(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+              <option value="GENERAL">Geral</option>
+              <option value="CLIENT">Cliente</option>
+              <option value="PROJECT">Projeto</option>
+              <option value="SQUAD">Squad</option>
+              <option value="DEPARTMENT">Departamento</option>
+            </select>
+            <button onClick={handleCreateCostCenter} className="rounded-lg bg-pisom-600 px-4 py-2 text-sm font-medium text-white hover:bg-pisom-700">Criar</button>
+          </div>
+          {costCenters.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {costCenters.map((cc) => (
+                <span key={cc.id} className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-sm">
+                  <FolderOpen className="h-3 w-3 text-gray-400" />
+                  {cc.name}
+                  <span className="text-xs text-gray-400">{costCenterTypeLabels[cc.type] || cc.type} ({cc._count?.expenses || 0})</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Summary */}
       {summary && (
@@ -71,6 +223,7 @@ export default function ExpensesPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">Total ({summary.month})</p>
             <p className="mt-1 text-xl font-bold text-gray-900">{fmt(summary.total)}</p>
+            <p className="text-xs text-gray-400">{summary.count} despesas</p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">Pago</p>
@@ -92,6 +245,7 @@ export default function ExpensesPage() {
               <div key={cat.categoryId || 'none'} className="flex items-center gap-3">
                 <div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color || '#9CA3AF' }} />
                 <span className="flex-1 text-sm text-gray-700">{cat.categoryName}</span>
+                <span className="text-xs text-gray-400">{cat.count} itens</span>
                 <span className="text-sm font-medium text-gray-900">{fmt(cat.total)}</span>
               </div>
             ))}
@@ -113,8 +267,22 @@ export default function ExpensesPage() {
               <option value="ONE_TIME">Pontual</option>
               <option value="INVESTMENT">Investimento</option>
             </select>
+            <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+              <option value="">Categoria (opcional)</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <select value={form.costCenterId} onChange={(e) => setForm({ ...form, costCenterId: e.target.value })} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+              <option value="">Centro de custo (opcional)</option>
+              {costCenters.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
             <input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} placeholder="Fornecedor (opcional)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
-            <div className="flex gap-2 col-span-2">
+            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descrição (opcional)" rows={2} className="col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Observações (opcional)" rows={2} className="col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <div className="flex gap-2 col-span-2 lg:col-span-4">
               <button onClick={handleCreate} className="rounded-lg bg-pisom-600 px-4 py-2 text-sm font-medium text-white hover:bg-pisom-700">Criar</button>
               <button onClick={() => setShowNew(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
             </div>
@@ -123,12 +291,23 @@ export default function ExpensesPage() {
       )}
 
       {/* Filters */}
-      <div className="mb-4 flex gap-1 rounded-lg border border-gray-300 p-1">
-        {['', 'PENDING', 'APPROVED', 'PAID', 'REJECTED'].map((s) => (
-          <button key={s} onClick={() => setFilter(s)} className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition', filter === s ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
-            {s ? statusConfig[s]?.label : 'Todas'}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-lg border border-gray-300 p-1">
+          {['', 'PENDING', 'APPROVED', 'PAID', 'REJECTED'].map((s) => (
+            <button key={s} onClick={() => setFilter(s)} className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition', filter === s ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
+              {s ? statusConfig[s]?.label : 'Todas'}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-gray-400" />
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
+          <span className="text-xs text-gray-400">até</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
+          {(startDate || endDate) && (
+            <button onClick={() => { setStartDate(''); setEndDate(''); }} className="text-xs text-red-500 hover:text-red-700">Limpar</button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -176,19 +355,27 @@ export default function ExpensesPage() {
                     <td className="px-5 py-3">
                       <div className="flex gap-1">
                         {exp.status === 'PENDING' && (
-                          <button onClick={async () => { await api.approveExpense(exp.id); load(); }} title="Aprovar" className="rounded p-1.5 text-blue-600 hover:bg-blue-50">
-                            <CheckCircle2 className="h-4 w-4" />
-                          </button>
+                          <>
+                            <button onClick={() => openEdit(exp)} title="Editar" className="rounded p-1.5 text-gray-500 hover:bg-gray-100">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button onClick={async () => { await api.approveExpense(exp.id); load(); }} title="Aprovar" className="rounded p-1.5 text-blue-600 hover:bg-blue-50">
+                              <CheckCircle2 className="h-4 w-4" />
+                            </button>
+                            <button onClick={async () => { await api.rejectExpense(exp.id); load(); }} title="Rejeitar" className="rounded p-1.5 text-red-600 hover:bg-red-50">
+                              <XCircle className="h-4 w-4" />
+                            </button>
+                          </>
                         )}
                         {exp.status === 'APPROVED' && (
-                          <button onClick={async () => { await api.payExpense(exp.id); load(); }} title="Pagar" className="rounded p-1.5 text-green-600 hover:bg-green-50">
-                            <DollarSign className="h-4 w-4" />
-                          </button>
-                        )}
-                        {exp.status === 'PENDING' && (
-                          <button onClick={async () => { await api.rejectExpense(exp.id); load(); }} title="Rejeitar" className="rounded p-1.5 text-red-600 hover:bg-red-50">
-                            <XCircle className="h-4 w-4" />
-                          </button>
+                          <>
+                            <button onClick={() => openEdit(exp)} title="Editar" className="rounded p-1.5 text-gray-500 hover:bg-gray-100">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button onClick={async () => { await api.payExpense(exp.id); load(); }} title="Pagar" className="rounded p-1.5 text-green-600 hover:bg-green-50">
+                              <DollarSign className="h-4 w-4" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -199,6 +386,83 @@ export default function ExpensesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Edit Modal */}
+      {editExpense && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Editar Despesa</h2>
+              <button onClick={() => setEditExpense(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Título</label>
+                <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Valor (R$)</label>
+                  <input type="number" value={editForm.value} onChange={(e) => setEditForm({ ...editForm, value: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Vencimento</label>
+                  <input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Tipo</label>
+                  <select value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+                    <option value="FIXED">Fixa</option>
+                    <option value="VARIABLE">Variável</option>
+                    <option value="ONE_TIME">Pontual</option>
+                    <option value="INVESTMENT">Investimento</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Fornecedor</label>
+                  <input value={editForm.supplier} onChange={(e) => setEditForm({ ...editForm, supplier: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Categoria</label>
+                  <select value={editForm.categoryId} onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+                    <option value="">Sem categoria</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Centro de custo</label>
+                  <select value={editForm.costCenterId} onChange={(e) => setEditForm({ ...editForm, costCenterId: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+                    <option value="">Sem centro de custo</option>
+                    {costCenters.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Descrição</label>
+                <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Observações</label>
+                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={handleUpdate} className="rounded-lg bg-pisom-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-pisom-700">Salvar</button>
+                <button onClick={() => setEditExpense(null)} className="rounded-lg border px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

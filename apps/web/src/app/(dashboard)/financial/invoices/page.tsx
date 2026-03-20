@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Search, Plus, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { Search, Plus, CheckCircle2, XCircle, RefreshCw, X, Eye, Calendar, DollarSign } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Rascunho', color: 'bg-gray-100 text-gray-700' },
@@ -13,6 +13,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   PAID: { label: 'Paga', color: 'bg-green-100 text-green-700' },
   PARTIALLY_PAID: { label: 'Parcial', color: 'bg-orange-100 text-orange-700' },
   CANCELLED: { label: 'Cancelada', color: 'bg-gray-100 text-gray-500' },
+  REFUNDED: { label: 'Reembolsada', color: 'bg-purple-100 text-purple-700' },
 };
 
 export default function InvoicesPage() {
@@ -20,30 +21,86 @@ export default function InvoicesPage() {
   const [summary, setSummary] = useState<any>(null);
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
-  const load = () => {
+  // New invoice form
+  const [showNew, setShowNew] = useState(false);
+  const [newForm, setNewForm] = useState({ value: '', description: '', dueDate: '', type: 'ONE_TIME', discount: '0', tax: '0' });
+
+  // Detail modal
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [showDetail, setShowDetail] = useState(false);
+
+  // Pay modal
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payInvoice, setPayInvoice] = useState<any>(null);
+  const [payForm, setPayForm] = useState({ paidValue: '', paymentMethod: 'PIX', paidAt: '' });
+
+  const load = useCallback(() => {
     const params: Record<string, string> = {};
     if (filter) params.status = filter;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
     api.getInvoices(params).then((res: any) => setInvoices(res.data || [])).catch(console.error).finally(() => setLoading(false));
     api.getInvoiceSummary().then(setSummary).catch(() => null);
-  };
+  }, [filter, startDate, endDate]);
 
-  useEffect(() => { load(); }, [filter]);
-
-  const handlePay = async (id: string) => {
-    await api.markInvoicePaid(id);
-    load();
-  };
-
-  const handleCancel = async (id: string) => {
-    await api.cancelInvoice(id);
-    load();
-  };
+  useEffect(() => { load(); }, [load]);
 
   const handleGenerate = async () => {
     const result = await api.generateInvoices();
     alert(`${result.generated} fatura(s) gerada(s)`);
     load();
+  };
+
+  const handleCreateInvoice = async () => {
+    if (!newForm.value || !newForm.dueDate) return;
+    await api.createInvoice({
+      value: parseFloat(newForm.value),
+      description: newForm.description,
+      dueDate: newForm.dueDate,
+      type: newForm.type,
+      discount: parseFloat(newForm.discount) || 0,
+      tax: parseFloat(newForm.tax) || 0,
+    });
+    setShowNew(false);
+    setNewForm({ value: '', description: '', dueDate: '', type: 'ONE_TIME', discount: '0', tax: '0' });
+    load();
+  };
+
+  const openPayModal = (inv: any) => {
+    setPayInvoice(inv);
+    setPayForm({
+      paidValue: String(inv.totalValue),
+      paymentMethod: 'PIX',
+      paidAt: new Date().toISOString().split('T')[0],
+    });
+    setShowPayModal(true);
+  };
+
+  const handlePay = async () => {
+    if (!payInvoice) return;
+    await api.markInvoicePaid(payInvoice.id, {
+      paidValue: parseFloat(payForm.paidValue),
+      paymentMethod: payForm.paymentMethod,
+      paidAt: payForm.paidAt,
+    });
+    setShowPayModal(false);
+    setPayInvoice(null);
+    load();
+  };
+
+  const handleCancel = async (id: string) => {
+    if (!confirm('Cancelar esta fatura?')) return;
+    await api.cancelInvoice(id);
+    load();
+  };
+
+  const openDetail = async (id: string) => {
+    const data = await api.getInvoice(id);
+    setSelectedInvoice(data);
+    setShowDetail(true);
   };
 
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -60,7 +117,7 @@ export default function InvoicesPage() {
             <RefreshCw className="h-4 w-4" />
             Gerar faturas
           </button>
-          <button className="flex items-center gap-2 rounded-lg bg-pisom-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-pisom-700">
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 rounded-lg bg-pisom-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-pisom-700">
             <Plus className="h-4 w-4" />
             Nova Fatura
           </button>
@@ -73,14 +130,17 @@ export default function InvoicesPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">Faturado ({summary.month})</p>
             <p className="mt-1 text-xl font-bold text-gray-900">{fmt(summary.billed.total)}</p>
+            <p className="text-xs text-gray-400">{summary.billed.count} faturas</p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">Recebido</p>
             <p className="mt-1 text-xl font-bold text-green-700">{fmt(summary.received.total)}</p>
+            <p className="text-xs text-gray-400">{summary.conversionRate}% de conversão</p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">Pendente</p>
             <p className="mt-1 text-xl font-bold text-yellow-700">{fmt(summary.pending.total)}</p>
+            <p className="text-xs text-gray-400">{summary.pending.count} faturas</p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-gray-500">Inadimplente</p>
@@ -90,13 +150,47 @@ export default function InvoicesPage() {
         </div>
       )}
 
+      {/* New invoice form */}
+      {showNew && (
+        <div className="mb-6 rounded-xl border border-pisom-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-4 font-semibold text-gray-900">Nova Fatura Avulsa</h3>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <input value={newForm.description} onChange={(e) => setNewForm({ ...newForm, description: e.target.value })} placeholder="Descrição" className="col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <input type="number" value={newForm.value} onChange={(e) => setNewForm({ ...newForm, value: e.target.value })} placeholder="Valor (R$)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <input type="date" value={newForm.dueDate} onChange={(e) => setNewForm({ ...newForm, dueDate: e.target.value })} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <select value={newForm.type} onChange={(e) => setNewForm({ ...newForm, type: e.target.value })} className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+              <option value="ONE_TIME">Avulsa</option>
+              <option value="ADDITIONAL">Adicional</option>
+              <option value="CREDIT">Crédito</option>
+            </select>
+            <input type="number" value={newForm.discount} onChange={(e) => setNewForm({ ...newForm, discount: e.target.value })} placeholder="Desconto (R$)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <input type="number" value={newForm.tax} onChange={(e) => setNewForm({ ...newForm, tax: e.target.value })} placeholder="Imposto (R$)" className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+            <div className="flex gap-2">
+              <button onClick={handleCreateInvoice} className="rounded-lg bg-pisom-600 px-4 py-2 text-sm font-medium text-white hover:bg-pisom-700">Criar</button>
+              <button onClick={() => setShowNew(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="mb-4 flex gap-1 rounded-lg border border-gray-300 p-1">
-        {['', 'PENDING', 'SENT', 'OVERDUE', 'PAID', 'CANCELLED'].map((s) => (
-          <button key={s} onClick={() => setFilter(s)} className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition', filter === s ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
-            {s ? statusConfig[s]?.label : 'Todas'}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 rounded-lg border border-gray-300 p-1">
+          {['', 'PENDING', 'SENT', 'OVERDUE', 'PAID', 'CANCELLED'].map((s) => (
+            <button key={s} onClick={() => setFilter(s)} className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition', filter === s ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
+              {s ? statusConfig[s]?.label : 'Todas'}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-gray-400" />
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
+          <span className="text-xs text-gray-400">até</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
+          {(startDate || endDate) && (
+            <button onClick={() => { setStartDate(''); setEndDate(''); }} className="text-xs text-red-500 hover:text-red-700">Limpar</button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -136,8 +230,11 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex gap-1">
+                        <button onClick={() => openDetail(inv.id)} title="Ver detalhes" className="rounded p-1.5 text-gray-500 hover:bg-gray-100">
+                          <Eye className="h-4 w-4" />
+                        </button>
                         {['PENDING', 'SENT', 'OVERDUE'].includes(inv.status) && (
-                          <button onClick={() => handlePay(inv.id)} title="Registrar pagamento" className="rounded p-1.5 text-green-600 hover:bg-green-50">
+                          <button onClick={() => openPayModal(inv)} title="Registrar pagamento" className="rounded p-1.5 text-green-600 hover:bg-green-50">
                             <CheckCircle2 className="h-4 w-4" />
                           </button>
                         )}
@@ -155,6 +252,143 @@ export default function InvoicesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Pay Modal */}
+      {showPayModal && payInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Registrar Pagamento</h2>
+              <button onClick={() => setShowPayModal(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-gray-500">
+              Fatura #{payInvoice.number} — {payInvoice.description || payInvoice.contract?.title} — Total: {fmt(Number(payInvoice.totalValue))}
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Valor pago (R$)</label>
+                <input type="number" value={payForm.paidValue} onChange={(e) => setPayForm({ ...payForm, paidValue: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Forma de pagamento</label>
+                <select value={payForm.paymentMethod} onChange={(e) => setPayForm({ ...payForm, paymentMethod: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none">
+                  <option value="PIX">PIX</option>
+                  <option value="BOLETO">Boleto</option>
+                  <option value="CARTAO">Cartão</option>
+                  <option value="TRANSFERENCIA">Transferência</option>
+                  <option value="DINHEIRO">Dinheiro</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Data do pagamento</label>
+                <input type="date" value={payForm.paidAt} onChange={(e) => setPayForm({ ...payForm, paidAt: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={handlePay} className="flex-1 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700">
+                  <DollarSign className="mr-1 inline h-4 w-4" />
+                  Confirmar Pagamento
+                </button>
+                <button onClick={() => setShowPayModal(false)} className="rounded-lg border px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {showDetail && selectedInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Fatura #{selectedInvoice.number}</h2>
+              <button onClick={() => setShowDetail(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Status</p>
+                  <span className={cn('mt-1 inline-block rounded-full px-2.5 py-1 text-xs font-medium', (statusConfig[selectedInvoice.status] || statusConfig.PENDING).color)}>
+                    {(statusConfig[selectedInvoice.status] || statusConfig.PENDING).label}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Tipo</p>
+                  <p className="mt-1 text-sm text-gray-900">
+                    {{ RECURRING: 'Recorrente', ONE_TIME: 'Avulsa', ADDITIONAL: 'Adicional', CREDIT: 'Crédito' }[selectedInvoice.type as string] || selectedInvoice.type}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Valor base</p>
+                  <p className="mt-1 text-sm text-gray-900">{fmt(Number(selectedInvoice.value))}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Total</p>
+                  <p className="mt-1 text-lg font-bold text-gray-900">{fmt(Number(selectedInvoice.totalValue))}</p>
+                </div>
+                {Number(selectedInvoice.discount) > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Desconto</p>
+                    <p className="mt-1 text-sm text-green-600">-{fmt(Number(selectedInvoice.discount))}</p>
+                  </div>
+                )}
+                {Number(selectedInvoice.tax) > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Imposto</p>
+                    <p className="mt-1 text-sm text-red-600">+{fmt(Number(selectedInvoice.tax))}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Vencimento</p>
+                  <p className="mt-1 text-sm text-gray-900">{new Date(selectedInvoice.dueDate).toLocaleDateString('pt-BR')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Referência</p>
+                  <p className="mt-1 text-sm text-gray-900">{selectedInvoice.referenceMonth || '—'}</p>
+                </div>
+              </div>
+
+              {selectedInvoice.description && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Descrição</p>
+                  <p className="mt-1 text-sm text-gray-700">{selectedInvoice.description}</p>
+                </div>
+              )}
+
+              {selectedInvoice.contract && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="text-xs font-medium text-gray-500">Contrato vinculado</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900">{selectedInvoice.contract.title}</p>
+                </div>
+              )}
+
+              {selectedInvoice.paidAt && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                  <p className="text-xs font-medium text-green-700">Pago em {new Date(selectedInvoice.paidAt).toLocaleDateString('pt-BR')}</p>
+                  <p className="text-sm font-medium text-green-800">Valor pago: {fmt(Number(selectedInvoice.paidValue))}</p>
+                  {selectedInvoice.paymentMethod && <p className="text-xs text-green-600">Via {selectedInvoice.paymentMethod}</p>}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                {['PENDING', 'SENT', 'OVERDUE'].includes(selectedInvoice.status) && (
+                  <button
+                    onClick={() => { setShowDetail(false); openPayModal(selectedInvoice); }}
+                    className="flex-1 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700"
+                  >
+                    Registrar Pagamento
+                  </button>
+                )}
+                <button onClick={() => setShowDetail(false)} className="rounded-lg border px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">Fechar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

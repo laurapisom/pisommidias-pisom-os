@@ -57,6 +57,7 @@ export class ContractsService {
     return this.prisma.contract.findMany({
       where,
       include: {
+        company: { select: { id: true, name: true } },
         _count: { select: { invoices: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -67,6 +68,7 @@ export class ContractsService {
     const contract = await this.prisma.contract.findFirst({
       where: { id, organizationId },
       include: {
+        company: { select: { id: true, name: true } },
         invoices: {
           orderBy: { dueDate: 'desc' },
           take: 24,

@@ -326,6 +326,10 @@ class ApiClient {
     return this.post<any>('/financial/expenses', data);
   }
 
+  updateExpense(id: string, data: any) {
+    return this.patch<any>(`/financial/expenses/${id}`, data);
+  }
+
   approveExpense(id: string) {
     return this.patch<any>(`/financial/expenses/${id}/approve`, {});
   }

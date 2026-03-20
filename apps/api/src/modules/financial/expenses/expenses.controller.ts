@@ -67,6 +67,12 @@ export class ExpensesController {
     return this.expensesService.createCostCenter(user.organizationId, body);
   }
 
+  @Patch(':id')
+  @ApiOperation({ summary: 'Atualizar despesa' })
+  update(@CurrentUser() user: any, @Param('id') id: string, @Body() body: any) {
+    return this.expensesService.update(user.organizationId, id, body);
+  }
+
   @Patch(':id/approve')
   @ApiOperation({ summary: 'Aprovar despesa' })
   approve(@CurrentUser() user: any, @Param('id') id: string) {
