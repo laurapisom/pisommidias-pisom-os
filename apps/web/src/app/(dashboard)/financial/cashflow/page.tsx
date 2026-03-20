@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronLeft, ChevronRight, BarChart3, Table, Download } from 'lucide-react';
 
 export default function CashflowPage() {
   const [realized, setRealized] = useState<any[]>([]);
@@ -13,6 +13,7 @@ export default function CashflowPage() {
   const [loading, setLoading] = useState(true);
   const [dreMonth, setDreMonth] = useState('');
   const [realizedMonths, setRealizedMonths] = useState(6);
+  const [view, setView] = useState<'chart' | 'table'>('chart');
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -35,12 +36,39 @@ export default function CashflowPage() {
     setDreMonth(d.toISOString().slice(0, 7));
   };
 
-  if (loading && realized.length === 0) {
-    return <div className="flex h-[60vh] items-center justify-center text-gray-400">Carregando...</div>;
-  }
-
   const allMonths = [...realized, ...projected];
   const totalRealized = realized.reduce((a, m) => ({ rev: a.rev + m.revenue, exp: a.exp + m.expenses }), { rev: 0, exp: 0 });
+
+  const exportCashflowCSV = () => {
+    const headers = ['Mês', 'Receita', 'Despesas', 'Saldo', 'Tipo'];
+    const rows = allMonths.map(m => [
+      m.month,
+      m.revenue.toFixed(2),
+      m.expenses.toFixed(2),
+      m.balance.toFixed(2),
+      m.projected ? 'Projetado' : 'Realizado',
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cashflow-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading && realized.length === 0) {
+    return (
+      <div>
+        <div className="mb-6"><div className="h-7 w-48 rounded bg-gray-200 animate-pulse" /><div className="mt-2 h-4 w-64 rounded bg-gray-100 animate-pulse" /></div>
+        <div className="mb-6 grid grid-cols-3 gap-3">
+          {[1, 2, 3].map(i => <div key={i} className="h-20 rounded-xl border border-gray-200 bg-white animate-pulse" />)}
+        </div>
+        <div className="h-48 rounded-xl border border-gray-200 bg-white animate-pulse" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -49,8 +77,18 @@ export default function CashflowPage() {
           <h1 className="text-2xl font-bold text-gray-900">Fluxo de Caixa</h1>
           <p className="mt-1 text-gray-500">Realizado e projetado + DRE gerencial</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Meses:</span>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-lg border border-gray-300 p-0.5">
+            <button onClick={() => setView('chart')} className={cn('rounded-md px-2.5 py-1.5 text-xs font-medium transition', view === 'chart' ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
+              <BarChart3 className="mr-1 inline h-3 w-3" /> Gráfico
+            </button>
+            <button onClick={() => setView('table')} className={cn('rounded-md px-2.5 py-1.5 text-xs font-medium transition', view === 'table' ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
+              <Table className="mr-1 inline h-3 w-3" /> Tabela
+            </button>
+          </div>
+          <button onClick={exportCashflowCSV} disabled={allMonths.length === 0} className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+            <Download className="h-3.5 w-3.5" /> CSV
+          </button>
           <select value={realizedMonths} onChange={(e) => setRealizedMonths(Number(e.target.value))} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none">
             <option value={3}>3 meses</option>
             <option value={6}>6 meses</option>
@@ -60,27 +98,47 @@ export default function CashflowPage() {
       </div>
 
       {/* Cashflow Summary Cards */}
-      {realized.length > 0 && (
-        <div className="mb-6 grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-gray-500">Receita Total ({realizedMonths}m)</p>
-            <p className="mt-1 text-xl font-bold text-green-700">{fmt(totalRealized.rev)}</p>
+      {realized.length > 0 && (() => {
+        const avgRev = totalRealized.rev / realized.length;
+        const avgExp = totalRealized.exp / realized.length;
+        const lastMonth = realized[realized.length - 1];
+        const prevMonth = realized.length >= 2 ? realized[realized.length - 2] : null;
+        const revGrowth = prevMonth && prevMonth.revenue > 0 ? Math.round(((lastMonth.revenue - prevMonth.revenue) / prevMonth.revenue) * 100) : null;
+        return (
+          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-gray-500">Receita Total ({realizedMonths}m)</p>
+              <p className="mt-1 text-xl font-bold text-green-700">{fmt(totalRealized.rev)}</p>
+              <p className="text-xs text-gray-400">Média: {fmt(avgRev)}/mês</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-gray-500">Despesas Total ({realizedMonths}m)</p>
+              <p className="mt-1 text-xl font-bold text-red-600">{fmt(totalRealized.exp)}</p>
+              <p className="text-xs text-gray-400">Média: {fmt(avgExp)}/mês</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-gray-500">Saldo Acumulado</p>
+              <p className={cn('mt-1 text-xl font-bold', totalRealized.rev - totalRealized.exp >= 0 ? 'text-green-700' : 'text-red-700')}>
+                {fmt(totalRealized.rev - totalRealized.exp)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-gray-500">Crescimento MoM</p>
+              {revGrowth !== null ? (
+                <>
+                  <p className={cn('mt-1 text-xl font-bold', revGrowth >= 0 ? 'text-green-700' : 'text-red-700')}>
+                    {revGrowth >= 0 ? '+' : ''}{revGrowth}%
+                  </p>
+                  <p className="text-xs text-gray-400">vs mês anterior</p>
+                </>
+              ) : <p className="mt-1 text-lg text-gray-400">—</p>}
+            </div>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-gray-500">Despesas Total ({realizedMonths}m)</p>
-            <p className="mt-1 text-xl font-bold text-red-600">{fmt(totalRealized.exp)}</p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <p className="text-xs text-gray-500">Saldo Acumulado</p>
-            <p className={cn('mt-1 text-xl font-bold', totalRealized.rev - totalRealized.exp >= 0 ? 'text-green-700' : 'text-red-700')}>
-              {fmt(totalRealized.rev - totalRealized.exp)}
-            </p>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Visual Cashflow Chart */}
-      {allMonths.length > 0 && (
+      {view === 'chart' && allMonths.length > 0 && (
         <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h3 className="mb-4 text-sm font-semibold uppercase text-gray-500">Fluxo Mensal</h3>
           <div className={cn('grid gap-2', allMonths.length <= 6 ? 'grid-cols-6' : allMonths.length <= 9 ? 'grid-cols-9' : 'grid-cols-12')}>
@@ -112,7 +170,7 @@ export default function CashflowPage() {
       )}
 
       {/* Cashflow Table */}
-      <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      {view === 'table' && <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <h3 className="mb-4 text-sm font-semibold uppercase text-gray-500">Detalhamento</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -141,7 +199,7 @@ export default function CashflowPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
 
       {/* DRE with month navigation */}
       {dre && (

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, Search, FileText, X, Eye, Pencil, Ban, Building2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, FileText, X, Eye, Pencil, Ban, Building2, Calendar, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Rascunho', color: 'bg-gray-100 text-gray-700' },
@@ -51,6 +51,12 @@ export default function ContractsPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -84,19 +90,22 @@ export default function ContractsPage() {
 
   const handleCreate = async () => {
     if (!form.title || !form.value || !form.startDate) return;
-    await api.createContract({
-      title: form.title,
-      value: parseFloat(form.value),
-      billingCycle: form.billingCycle,
-      startDate: form.startDate,
-      dayOfMonth: parseInt(form.dayOfMonth),
-      companyId: form.companyId || undefined,
-      services: form.services ? form.services.split(',').map((s: string) => s.trim()) : undefined,
-      notes: form.notes || undefined,
-    });
-    setShowNew(false);
-    setForm({ ...emptyForm });
-    load();
+    try {
+      await api.createContract({
+        title: form.title,
+        value: parseFloat(form.value),
+        billingCycle: form.billingCycle,
+        startDate: form.startDate,
+        dayOfMonth: parseInt(form.dayOfMonth),
+        companyId: form.companyId || undefined,
+        services: form.services ? form.services.split(',').map((s: string) => s.trim()) : undefined,
+        notes: form.notes || undefined,
+      });
+      setShowNew(false);
+      setForm({ ...emptyForm });
+      showToast('Contrato criado com sucesso');
+      load();
+    } catch { showToast('Erro ao criar contrato', 'error'); }
   };
 
   const openDetail = async (id: string) => {
@@ -118,28 +127,34 @@ export default function ContractsPage() {
 
   const handleUpdate = async () => {
     if (!selectedContract) return;
-    await api.updateContract(selectedContract.id, {
-      title: editForm.title,
-      value: parseFloat(editForm.value),
-      billingCycle: editForm.billingCycle,
-      dayOfMonth: parseInt(editForm.dayOfMonth),
-      companyId: editForm.companyId || null,
-      services: editForm.services ? editForm.services.split(',').map((s: string) => s.trim()) : [],
-      notes: editForm.notes || null,
-      status: editForm.status,
-    });
-    setEditMode(false);
-    setShowDetail(false);
-    load();
+    try {
+      await api.updateContract(selectedContract.id, {
+        title: editForm.title,
+        value: parseFloat(editForm.value),
+        billingCycle: editForm.billingCycle,
+        dayOfMonth: parseInt(editForm.dayOfMonth),
+        companyId: editForm.companyId || null,
+        services: editForm.services ? editForm.services.split(',').map((s: string) => s.trim()) : [],
+        notes: editForm.notes || null,
+        status: editForm.status,
+      });
+      setEditMode(false);
+      setShowDetail(false);
+      showToast('Contrato atualizado');
+      load();
+    } catch { showToast('Erro ao atualizar contrato', 'error'); }
   };
 
   const handleCancel = async () => {
     if (!selectedContract) return;
-    await api.cancelContract(selectedContract.id, cancelReason || undefined);
-    setShowCancelConfirm(false);
-    setCancelReason('');
-    setShowDetail(false);
-    load();
+    try {
+      await api.cancelContract(selectedContract.id, cancelReason || undefined);
+      setShowCancelConfirm(false);
+      setCancelReason('');
+      setShowDetail(false);
+      showToast('Contrato cancelado');
+      load();
+    } catch { showToast('Erro ao cancelar contrato', 'error'); }
   };
 
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -252,7 +267,16 @@ export default function ContractsPage() {
                 </tr>
               ))
             ) : contracts.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Nenhum contrato encontrado</td></tr>
+              <tr><td colSpan={7} className="px-5 py-16 text-center">
+                <FileText className="mx-auto h-10 w-10 text-gray-300" />
+                <p className="mt-3 text-sm font-medium text-gray-500">Nenhum contrato encontrado</p>
+                <p className="mt-1 text-xs text-gray-400">{search || filter || startDate ? 'Tente ajustar os filtros' : 'Crie seu primeiro contrato'}</p>
+                {!search && !filter && !startDate && (
+                  <button onClick={() => setShowNew(true)} className="mt-3 rounded-lg bg-pisom-600 px-4 py-2 text-sm font-medium text-white hover:bg-pisom-700">
+                    <Plus className="mr-1 inline h-4 w-4" /> Novo Contrato
+                  </button>
+                )}
+              </td></tr>
             ) : (
               contracts.map((c: any) => {
                 const st = statusConfig[c.status] || statusConfig.DRAFT;
@@ -540,6 +564,17 @@ export default function ContractsPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={cn(
+          'fixed bottom-6 right-6 z-[60] flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg',
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        )}>
+          {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          {toast.message}
         </div>
       )}
     </div>

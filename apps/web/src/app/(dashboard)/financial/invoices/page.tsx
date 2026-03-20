@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Search, Plus, CheckCircle2, XCircle, RefreshCw, X, Eye, Calendar, DollarSign, Send, Pencil, Building2, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Search, Plus, CheckCircle2, XCircle, RefreshCw, X, Eye, Calendar, DollarSign, Send, Pencil, Building2, ChevronLeft, ChevronRight, Download, Receipt } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Rascunho', color: 'bg-gray-100 text-gray-700' },
@@ -319,6 +319,13 @@ export default function InvoicesPage() {
         </div>
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-gray-400" />
+          {[
+            { label: 'Este mês', fn: () => { const now = new Date(); setStartDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`); setEndDate(''); } },
+            { label: 'Mês anterior', fn: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); setStartDate(`${y}-${m}-01`); const last = new Date(y, d.getMonth() + 1, 0); setEndDate(`${y}-${m}-${String(last.getDate()).padStart(2, '0')}`); } },
+            { label: 'Trimestre', fn: () => { const now = new Date(); const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1); setStartDate(qStart.toISOString().slice(0, 10)); setEndDate(''); } },
+          ].map(p => (
+            <button key={p.label} onClick={p.fn} className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">{p.label}</button>
+          ))}
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
           <span className="text-xs text-gray-400">até</span>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
@@ -373,7 +380,11 @@ export default function InvoicesPage() {
                 </tr>
               ))
             ) : invoices.length === 0 ? (
-              <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400">Nenhuma fatura encontrada</td></tr>
+              <tr><td colSpan={8} className="px-5 py-16 text-center">
+                <Receipt className="mx-auto h-10 w-10 text-gray-300" />
+                <p className="mt-3 text-sm font-medium text-gray-500">Nenhuma fatura encontrada</p>
+                <p className="mt-1 text-xs text-gray-400">{search || filter || startDate ? 'Tente ajustar os filtros' : 'Gere faturas a partir dos contratos ou crie uma avulsa'}</p>
+              </td></tr>
             ) : (
               invoices.map((inv: any) => {
                 const st = statusConfig[inv.status] || statusConfig.PENDING;

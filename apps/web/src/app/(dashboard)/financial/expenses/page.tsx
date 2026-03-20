@@ -380,6 +380,13 @@ export default function ExpensesPage() {
         </div>
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-gray-400" />
+          {[
+            { label: 'Este mês', fn: () => { const now = new Date(); setStartDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`); setEndDate(''); } },
+            { label: 'Mês anterior', fn: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); setStartDate(`${y}-${m}-01`); const last = new Date(y, d.getMonth() + 1, 0); setEndDate(`${y}-${m}-${String(last.getDate()).padStart(2, '0')}`); } },
+            { label: 'Trimestre', fn: () => { const now = new Date(); const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1); setStartDate(qStart.toISOString().slice(0, 10)); setEndDate(''); } },
+          ].map(p => (
+            <button key={p.label} onClick={p.fn} className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">{p.label}</button>
+          ))}
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
           <span className="text-xs text-gray-400">até</span>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none" />
@@ -417,7 +424,16 @@ export default function ExpensesPage() {
                 </tr>
               ))
             ) : expenses.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Nenhuma despesa encontrada</td></tr>
+              <tr><td colSpan={7} className="px-5 py-16 text-center">
+                <DollarSign className="mx-auto h-10 w-10 text-gray-300" />
+                <p className="mt-3 text-sm font-medium text-gray-500">Nenhuma despesa encontrada</p>
+                <p className="mt-1 text-xs text-gray-400">{search || filter || startDate ? 'Tente ajustar os filtros' : 'Cadastre sua primeira despesa'}</p>
+                {!search && !filter && !startDate && (
+                  <button onClick={() => setShowNew(true)} className="mt-3 rounded-lg bg-pisom-600 px-4 py-2 text-sm font-medium text-white hover:bg-pisom-700">
+                    <Plus className="mr-1 inline h-4 w-4" /> Nova Despesa
+                  </button>
+                )}
+              </td></tr>
             ) : (
               expenses.map((exp: any) => {
                 const st = statusConfig[exp.status] || statusConfig.PENDING;
