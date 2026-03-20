@@ -34,11 +34,12 @@ export default function ContractsPage() {
   const [mrr, setMrr] = useState<any>(null);
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [companies, setCompanies] = useState<any[]>([]);
-  const [companySearch, setCompanySearch] = useState('');
 
   // Detail/Edit modal
   const [selectedContract, setSelectedContract] = useState<any>(null);
@@ -52,9 +53,11 @@ export default function ContractsPage() {
     const params: Record<string, string> = {};
     if (filter) params.status = filter;
     if (search) params.search = search;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
     api.getContracts(params).then(setContracts).catch(console.error).finally(() => setLoading(false));
     api.getMRR().then(setMrr).catch(() => null);
-  }, [filter, search]);
+  }, [filter, search, startDate, endDate]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
@@ -64,11 +67,6 @@ export default function ContractsPage() {
   // Load companies for select
   useEffect(() => {
     api.getCompanies().then(setCompanies).catch(() => null);
-  }, []);
-
-  const searchCompanies = useCallback((q: string) => {
-    setCompanySearch(q);
-    api.getCompanies(q || undefined).then(setCompanies).catch(() => null);
   }, []);
 
   const handleCreate = async () => {
@@ -188,10 +186,21 @@ export default function ContractsPage() {
       )}
 
       {/* Filters */}
-      <div className="mb-4 flex items-center gap-3">
-        <div className="relative flex-1">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar contratos..." className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm focus:border-pisom-500 focus:outline-none" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-gray-400" />
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+          <span className="text-xs text-gray-400">até</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-lg border border-gray-300 px-2.5 py-2 text-sm focus:border-pisom-500 focus:outline-none" />
+          {(startDate || endDate) && (
+            <button onClick={() => { setStartDate(''); setEndDate(''); }} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <div className="flex gap-1 rounded-lg border border-gray-300 p-1">
           {['', 'ACTIVE', 'PAUSED', 'CANCELLED'].map((s) => (

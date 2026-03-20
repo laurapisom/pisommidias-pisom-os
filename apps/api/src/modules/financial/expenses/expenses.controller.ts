@@ -25,13 +25,14 @@ export class ExpensesController {
     @Query('categoryId') categoryId?: string,
     @Query('costCenterId') costCenterId?: string,
     @Query('type') type?: string,
+    @Query('search') search?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.expensesService.findAll(user.organizationId, {
-      status, categoryId, costCenterId, type, startDate, endDate,
+      status, categoryId, costCenterId, type, search, startDate, endDate,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });

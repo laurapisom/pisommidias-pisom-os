@@ -46,6 +46,7 @@ export class ExpensesService {
     categoryId?: string;
     costCenterId?: string;
     type?: string;
+    search?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -59,6 +60,12 @@ export class ExpensesService {
     if (filters?.categoryId) where.categoryId = filters.categoryId;
     if (filters?.costCenterId) where.costCenterId = filters.costCenterId;
     if (filters?.type) where.type = filters.type;
+    if (filters?.search) {
+      where.OR = [
+        { title: { contains: filters.search, mode: 'insensitive' } },
+        { supplier: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
     if (filters?.startDate || filters?.endDate) {
       where.dueDate = {};
       if (filters?.startDate) where.dueDate.gte = new Date(filters.startDate);

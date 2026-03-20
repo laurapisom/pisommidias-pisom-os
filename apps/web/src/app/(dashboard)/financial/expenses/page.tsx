@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Palette, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
@@ -57,6 +57,7 @@ export default function ExpensesPage() {
     setLoading(true);
     const params: Record<string, string> = { page: String(page), limit: '20' };
     if (filter) params.status = filter;
+    if (search) params.search = search;
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
     api.getExpenses(params)
@@ -68,10 +69,13 @@ export default function ExpensesPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
     api.getExpenseSummary().then(setSummary).catch(() => null);
-  }, [filter, startDate, endDate, page]);
+  }, [filter, search, startDate, endDate, page]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [filter, startDate, endDate]);
+  useEffect(() => {
+    const t = setTimeout(load, search ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [load]);
+  useEffect(() => { setPage(1); }, [filter, search, startDate, endDate]);
 
   useEffect(() => {
     api.getExpenseCategories().then(setCategories).catch(() => null);
@@ -305,6 +309,10 @@ export default function ExpensesPage() {
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative max-w-xs flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar despesas..." className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:border-pisom-500 focus:outline-none" />
+        </div>
         <div className="flex gap-1 rounded-lg border border-gray-300 p-1">
           {['', 'PENDING', 'APPROVED', 'PAID', 'REJECTED'].map((s) => (
             <button key={s} onClick={() => setFilter(s)} className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition', filter === s ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>

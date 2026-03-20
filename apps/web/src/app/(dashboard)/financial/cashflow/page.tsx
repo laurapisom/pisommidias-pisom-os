@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function CashflowPage() {
   const [realized, setRealized] = useState<any[]>([]);
@@ -11,34 +11,109 @@ export default function CashflowPage() {
   const [dre, setDre] = useState<any>(null);
   const [profitability, setProfitability] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dreMonth, setDreMonth] = useState('');
+  const [realizedMonths, setRealizedMonths] = useState(6);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
+    setLoading(true);
     Promise.all([
-      api.getCashflowRealized(6).then(setRealized),
+      api.getCashflowRealized(realizedMonths).then(setRealized),
       api.getCashflowProjected(3).then(setProjected),
-      api.getDRE().then(setDre),
-      api.getClientProfitability().then(setProfitability),
+      api.getDRE(dreMonth || undefined).then(setDre),
+      api.getClientProfitability(dreMonth || undefined).then(setProfitability),
     ]).catch(console.error).finally(() => setLoading(false));
-  }, []);
+  }, [realizedMonths, dreMonth]);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
-  if (loading) {
+  const navigateDreMonth = (direction: number) => {
+    const current = dreMonth || new Date().toISOString().slice(0, 7);
+    const [y, m] = current.split('-').map(Number);
+    const d = new Date(y, m - 1 + direction, 1);
+    setDreMonth(d.toISOString().slice(0, 7));
+  };
+
+  if (loading && realized.length === 0) {
     return <div className="flex h-[60vh] items-center justify-center text-gray-400">Carregando...</div>;
   }
 
   const allMonths = [...realized, ...projected];
+  const totalRealized = realized.reduce((a, m) => ({ rev: a.rev + m.revenue, exp: a.exp + m.expenses }), { rev: 0, exp: 0 });
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Fluxo de Caixa</h1>
-        <p className="mt-1 text-gray-500">Realizado e projetado + DRE gerencial</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Fluxo de Caixa</h1>
+          <p className="mt-1 text-gray-500">Realizado e projetado + DRE gerencial</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Meses:</span>
+          <select value={realizedMonths} onChange={(e) => setRealizedMonths(Number(e.target.value))} className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none">
+            <option value={3}>3 meses</option>
+            <option value={6}>6 meses</option>
+            <option value={12}>12 meses</option>
+          </select>
+        </div>
       </div>
+
+      {/* Cashflow Summary Cards */}
+      {realized.length > 0 && (
+        <div className="mb-6 grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="text-xs text-gray-500">Receita Total ({realizedMonths}m)</p>
+            <p className="mt-1 text-xl font-bold text-green-700">{fmt(totalRealized.rev)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="text-xs text-gray-500">Despesas Total ({realizedMonths}m)</p>
+            <p className="mt-1 text-xl font-bold text-red-600">{fmt(totalRealized.exp)}</p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="text-xs text-gray-500">Saldo Acumulado</p>
+            <p className={cn('mt-1 text-xl font-bold', totalRealized.rev - totalRealized.exp >= 0 ? 'text-green-700' : 'text-red-700')}>
+              {fmt(totalRealized.rev - totalRealized.exp)}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Cashflow Chart */}
+      {allMonths.length > 0 && (
+        <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-4 text-sm font-semibold uppercase text-gray-500">Fluxo Mensal</h3>
+          <div className={cn('grid gap-2', allMonths.length <= 6 ? 'grid-cols-6' : allMonths.length <= 9 ? 'grid-cols-9' : 'grid-cols-12')}>
+            {allMonths.map((m) => {
+              const maxVal = Math.max(...allMonths.map((x) => Math.max(x.revenue, x.expenses)), 1);
+              return (
+                <div key={m.month} className={cn('text-center', m.projected && 'opacity-60')}>
+                  <div className="mb-1 flex h-28 items-end justify-center gap-0.5">
+                    <div className="w-4 rounded-t bg-green-400" style={{ height: `${(m.revenue / maxVal) * 100}%`, minHeight: '2px' }} />
+                    <div className="w-4 rounded-t bg-red-400" style={{ height: `${(m.expenses / maxVal) * 100}%`, minHeight: '2px' }} />
+                  </div>
+                  <p className="text-[10px] font-medium text-gray-600">
+                    {m.month.slice(5)}
+                    {m.projected && '*'}
+                  </p>
+                  <p className={cn('text-[10px] font-medium', m.balance >= 0 ? 'text-green-600' : 'text-red-600')}>
+                    {m.balance >= 0 ? '+' : ''}{fmt(m.balance)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex items-center justify-center gap-6 text-xs text-gray-500">
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-green-400" />Receita</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-red-400" />Despesas</span>
+            <span className="text-gray-400">* Projetado</span>
+          </div>
+        </div>
+      )}
 
       {/* Cashflow Table */}
       <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-        <h3 className="mb-4 text-sm font-semibold uppercase text-gray-500">Fluxo de Caixa</h3>
+        <h3 className="mb-4 text-sm font-semibold uppercase text-gray-500">Detalhamento</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -68,10 +143,21 @@ export default function CashflowPage() {
         </div>
       </div>
 
-      {/* DRE */}
+      {/* DRE with month navigation */}
       {dre && (
         <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 text-sm font-semibold uppercase text-gray-500">DRE Gerencial - {dre.month}</h3>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase text-gray-500">DRE Gerencial</h3>
+            <div className="flex items-center gap-2">
+              <button onClick={() => navigateDreMonth(-1)} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="min-w-[80px] text-center text-sm font-medium text-gray-700">{dre.month}</span>
+              <button onClick={() => navigateDreMonth(1)} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
@@ -91,7 +177,6 @@ export default function CashflowPage() {
               <span className="text-lg font-bold text-red-600">{fmt(dre.totalExpenses)}</span>
             </div>
 
-            {/* Expense breakdown */}
             {dre.expenseBreakdown?.length > 0 && (
               <div className="ml-6 space-y-1 border-l-2 border-gray-200 pl-4">
                 {dre.expenseBreakdown.map((cat: any, i: number) => (

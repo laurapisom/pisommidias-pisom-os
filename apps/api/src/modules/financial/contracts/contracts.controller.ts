@@ -24,8 +24,10 @@ export class ContractsController {
     @Query('status') status?: string,
     @Query('companyId') companyId?: string,
     @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.contractsService.findAll(user.organizationId, { status, companyId, search });
+    return this.contractsService.findAll(user.organizationId, { status, companyId, search, startDate, endDate });
   }
 
   @Get('mrr')

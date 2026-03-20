@@ -46,12 +46,19 @@ export class ContractsService {
     status?: string;
     companyId?: string;
     search?: string;
+    startDate?: string;
+    endDate?: string;
   }) {
     const where: any = { organizationId };
     if (filters?.status) where.status = filters.status;
     if (filters?.companyId) where.companyId = filters.companyId;
     if (filters?.search) {
       where.title = { contains: filters.search, mode: 'insensitive' };
+    }
+    if (filters?.startDate || filters?.endDate) {
+      where.startDate = {};
+      if (filters?.startDate) where.startDate.gte = new Date(filters.startDate);
+      if (filters?.endDate) where.startDate.lte = new Date(filters.endDate);
     }
 
     return this.prisma.contract.findMany({

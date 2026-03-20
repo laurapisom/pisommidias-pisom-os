@@ -15,6 +15,35 @@ import {
   Users,
 } from 'lucide-react';
 
+function SkeletonCard() {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm animate-pulse">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="h-4 w-16 rounded bg-gray-200" />
+          <div className="mt-2 h-7 w-28 rounded bg-gray-200" />
+        </div>
+        <div className="h-11 w-11 rounded-lg bg-gray-100" />
+      </div>
+      <div className="mt-3 h-3 w-32 rounded bg-gray-100" />
+    </div>
+  );
+}
+
+function SkeletonBlock({ className }: { className?: string }) {
+  return (
+    <div className={cn('rounded-xl border border-gray-200 bg-white p-5 shadow-sm animate-pulse', className)}>
+      <div className="mb-4 h-4 w-40 rounded bg-gray-200" />
+      <div className="space-y-3">
+        <div className="h-4 w-full rounded bg-gray-100" />
+        <div className="h-4 w-3/4 rounded bg-gray-100" />
+        <div className="h-4 w-5/6 rounded bg-gray-100" />
+        <div className="h-4 w-2/3 rounded bg-gray-100" />
+      </div>
+    </div>
+  );
+}
+
 export default function FinancialOverviewPage() {
   const router = useRouter();
   const [mrr, setMrr] = useState<any>(null);
@@ -23,6 +52,7 @@ export default function FinancialOverviewPage() {
   const [dre, setDre] = useState<any>(null);
   const [cashflow, setCashflow] = useState<any[]>([]);
   const [profitability, setProfitability] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
@@ -32,7 +62,7 @@ export default function FinancialOverviewPage() {
       api.getDRE().then(setDre).catch(() => null),
       api.getCashflowRealized(6).then(setCashflow).catch(() => null),
       api.getClientProfitability().then(setProfitability).catch(() => null),
-    ]);
+    ]).finally(() => setLoading(false));
   }, []);
 
   const fmt = (v: number) =>
@@ -44,6 +74,27 @@ export default function FinancialOverviewPage() {
         <h1 className="text-2xl font-bold text-gray-900">Financeiro</h1>
         <p className="mt-1 text-gray-500">Visão geral da saúde financeira</p>
       </div>
+
+      {/* Loading Skeleton */}
+      {loading && (
+        <>
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <SkeletonBlock className="lg:col-span-2" />
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-16 animate-pulse rounded-xl border border-gray-200 bg-white shadow-sm" />
+              ))}
+            </div>
+          </div>
+          <SkeletonBlock />
+        </>
+      )}
 
       {/* KPI Cards */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
