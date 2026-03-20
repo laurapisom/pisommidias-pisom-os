@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Search, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
@@ -152,6 +152,27 @@ export default function ExpensesPage() {
 
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+  const exportCSV = () => {
+    const headers = ['Título', 'Fornecedor', 'Categoria', 'Tipo', 'Valor', 'Vencimento', 'Status'];
+    const rows = expenses.map((exp: any) => [
+      exp.title,
+      exp.supplier || '',
+      exp.category?.name || '',
+      typeLabels[exp.type] || exp.type,
+      Number(exp.value).toFixed(2),
+      new Date(exp.dueDate).toLocaleDateString('pt-BR'),
+      (statusConfig[exp.status] || statusConfig.PENDING).label,
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `despesas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -160,6 +181,10 @@ export default function ExpensesPage() {
           <p className="mt-1 text-gray-500">Contas a pagar e controle de custos</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={exportCSV} disabled={expenses.length === 0} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+            <Download className="h-4 w-4" />
+            CSV
+          </button>
           <button onClick={() => setShowCatManager(!showCatManager)} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
             <Tag className="h-4 w-4" /> Categorias
           </button>
@@ -347,7 +372,17 @@ export default function ExpensesPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Carregando...</td></tr>
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-5 py-3"><div className="h-4 w-28 rounded bg-gray-200" /><div className="mt-1 h-3 w-20 rounded bg-gray-100" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-20 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-16 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-20 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-20 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-5 w-16 rounded-full bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-6 w-20 rounded bg-gray-100" /></td>
+                </tr>
+              ))
             ) : expenses.length === 0 ? (
               <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Nenhuma despesa encontrada</td></tr>
             ) : (

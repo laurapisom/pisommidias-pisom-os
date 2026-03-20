@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, Search, FileText, X, Eye, Pencil, Ban, Building2, Calendar } from 'lucide-react';
+import { Plus, Search, FileText, X, Eye, Pencil, Ban, Building2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Rascunho', color: 'bg-gray-100 text-gray-700' },
@@ -31,6 +31,9 @@ const emptyForm = { title: '', value: '', billingCycle: 'MONTHLY', startDate: ''
 
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [mrr, setMrr] = useState<any>(null);
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -50,19 +53,29 @@ export default function ContractsPage() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const load = useCallback(() => {
-    const params: Record<string, string> = {};
+    setLoading(true);
+    const params: Record<string, string> = { page: String(page), limit: '20' };
     if (filter) params.status = filter;
     if (search) params.search = search;
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
-    api.getContracts(params).then(setContracts).catch(console.error).finally(() => setLoading(false));
+    api.getContracts(params)
+      .then((res: any) => {
+        setContracts(res.data || []);
+        setTotal(res.total || 0);
+        setTotalPages(res.totalPages || 1);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
     api.getMRR().then(setMrr).catch(() => null);
-  }, [filter, search, startDate, endDate]);
+  }, [filter, search, startDate, endDate, page]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
     return () => clearTimeout(t);
   }, [load]);
+
+  useEffect(() => { setPage(1); }, [filter, search, startDate, endDate]);
 
   // Load companies for select
   useEffect(() => {
@@ -227,7 +240,17 @@ export default function ContractsPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Carregando...</td></tr>
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-5 py-3"><div className="h-4 w-32 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-24 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-20 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-16 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-20 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-5 w-16 rounded-full bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-6 w-8 rounded bg-gray-100" /></td>
+                </tr>
+              ))
             ) : contracts.length === 0 ? (
               <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Nenhum contrato encontrado</td></tr>
             ) : (
@@ -270,6 +293,32 @@ export default function ContractsPage() {
             )}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-gray-200 px-5 py-3">
+            <p className="text-xs text-gray-500">
+              Página {page} de {totalPages} · {total} contratos
+            </p>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const p = page <= 3 ? i + 1 : page + i - 2;
+                if (p < 1 || p > totalPages) return null;
+                return (
+                  <button key={p} onClick={() => setPage(p)} className={cn('rounded px-2.5 py-1 text-xs font-medium', p === page ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
+                    {p}
+                  </button>
+                );
+              })}
+              <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Detail/Edit Modal */}

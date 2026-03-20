@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Receipt,
   Users,
+  RefreshCw,
 } from 'lucide-react';
 
 function SkeletonCard() {
@@ -53,17 +54,26 @@ export default function FinancialOverviewPage() {
   const [cashflow, setCashflow] = useState<any[]>([]);
   const [profitability, setProfitability] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState<string[]>([]);
 
-  useEffect(() => {
+  const loadData = () => {
+    setLoading(true);
+    setErrors([]);
+    const errs: string[] = [];
     Promise.all([
-      api.getMRR().then(setMrr).catch(() => null),
-      api.getInvoiceSummary().then(setInvoiceSummary).catch(() => null),
-      api.getExpenseSummary().then(setExpenseSummary).catch(() => null),
-      api.getDRE().then(setDre).catch(() => null),
-      api.getCashflowRealized(6).then(setCashflow).catch(() => null),
-      api.getClientProfitability().then(setProfitability).catch(() => null),
-    ]).finally(() => setLoading(false));
-  }, []);
+      api.getMRR().then(setMrr).catch(() => { errs.push('MRR'); }),
+      api.getInvoiceSummary().then(setInvoiceSummary).catch(() => { errs.push('Faturas'); }),
+      api.getExpenseSummary().then(setExpenseSummary).catch(() => { errs.push('Despesas'); }),
+      api.getDRE().then(setDre).catch(() => { errs.push('DRE'); }),
+      api.getCashflowRealized(6).then(setCashflow).catch(() => { errs.push('Cashflow'); }),
+      api.getClientProfitability().then(setProfitability).catch(() => { errs.push('Rentabilidade'); }),
+    ]).finally(() => {
+      setLoading(false);
+      setErrors(errs);
+    });
+  };
+
+  useEffect(() => { loadData(); }, []);
 
   const fmt = (v: number) =>
     `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -94,6 +104,19 @@ export default function FinancialOverviewPage() {
           </div>
           <SkeletonBlock />
         </>
+      )}
+
+      {/* Error Banner */}
+      {errors.length > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm text-red-700">
+            <AlertTriangle className="mr-1.5 inline h-4 w-4" />
+            Falha ao carregar: {errors.join(', ')}
+          </p>
+          <button onClick={loadData} className="flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100">
+            <RefreshCw className="h-3 w-3" /> Tentar novamente
+          </button>
+        </div>
       )}
 
       {/* KPI Cards */}

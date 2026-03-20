@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Search, Plus, CheckCircle2, XCircle, RefreshCw, X, Eye, Calendar, DollarSign, Send, Pencil, Building2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, CheckCircle2, XCircle, RefreshCw, X, Eye, Calendar, DollarSign, Send, Pencil, Building2, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Rascunho', color: 'bg-gray-100 text-gray-700' },
@@ -153,6 +153,27 @@ export default function InvoicesPage() {
 
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
+  const exportCSV = () => {
+    const headers = ['Nº', 'Descrição', 'Empresa', 'Valor', 'Vencimento', 'Status', 'Tipo'];
+    const rows = invoices.map((inv: any) => [
+      inv.number,
+      inv.description || inv.contract?.title || '',
+      inv.company?.name || '',
+      Number(inv.totalValue).toFixed(2),
+      new Date(inv.dueDate).toLocaleDateString('pt-BR'),
+      (statusConfig[inv.status] || statusConfig.PENDING).label,
+      typeLabels[inv.type] || inv.type,
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `faturas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -161,6 +182,10 @@ export default function InvoicesPage() {
           <p className="mt-1 text-gray-500">Cobranças e pagamentos {total > 0 && `· ${total} faturas`}</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={exportCSV} disabled={invoices.length === 0} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+            <Download className="h-4 w-4" />
+            CSV
+          </button>
           <button onClick={handleGenerate} className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
             <RefreshCw className="h-4 w-4" />
             Gerar faturas
@@ -261,7 +286,17 @@ export default function InvoicesPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Carregando...</td></tr>
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-5 py-3"><div className="h-4 w-12 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-32 rounded bg-gray-200" /><div className="mt-1 h-3 w-20 rounded bg-gray-100" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-24 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-20 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-4 w-20 rounded bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-5 w-16 rounded-full bg-gray-200" /></td>
+                  <td className="px-5 py-3"><div className="h-6 w-20 rounded bg-gray-100" /></td>
+                </tr>
+              ))
             ) : invoices.length === 0 ? (
               <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Nenhuma fatura encontrada</td></tr>
             ) : (

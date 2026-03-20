@@ -26,8 +26,14 @@ export class ContractsController {
     @Query('search') search?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.contractsService.findAll(user.organizationId, { status, companyId, search, startDate, endDate });
+    return this.contractsService.findAll(user.organizationId, {
+      status, companyId, search, startDate, endDate,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   @Get('mrr')

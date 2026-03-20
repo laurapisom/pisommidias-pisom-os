@@ -48,6 +48,8 @@ export class ContractsService {
     search?: string;
     startDate?: string;
     endDate?: string;
+    page?: number;
+    limit?: number;
   }) {
     const where: any = { organizationId };
     if (filters?.status) where.status = filters.status;
@@ -61,14 +63,24 @@ export class ContractsService {
       if (filters?.endDate) where.startDate.lte = new Date(filters.endDate);
     }
 
-    return this.prisma.contract.findMany({
-      where,
-      include: {
-        company: { select: { id: true, name: true } },
-        _count: { select: { invoices: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+
+    const [data, total] = await Promise.all([
+      this.prisma.contract.findMany({
+        where,
+        include: {
+          company: { select: { id: true, name: true } },
+          _count: { select: { invoices: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.contract.count({ where }),
+    ]);
+
+    return { data, total, page, totalPages: Math.ceil(total / limit) };
   }
 
   async findById(organizationId: string, id: string) {
