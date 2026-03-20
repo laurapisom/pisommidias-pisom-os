@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Search, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Search, ChevronLeft, ChevronRight, Download, Copy } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
@@ -84,20 +84,23 @@ export default function ExpensesPage() {
 
   const handleCreate = async () => {
     if (!form.title || !form.value || !form.dueDate) return;
-    await api.createExpense({
-      title: form.title,
-      value: parseFloat(form.value),
-      dueDate: form.dueDate,
-      type: form.type,
-      supplier: form.supplier || undefined,
-      description: form.description || undefined,
-      categoryId: form.categoryId || undefined,
-      costCenterId: form.costCenterId || undefined,
-      notes: form.notes || undefined,
-    });
-    setShowNew(false);
-    setForm({ title: '', value: '', dueDate: '', type: 'FIXED', supplier: '', description: '', categoryId: '', costCenterId: '', notes: '' });
-    load();
+    try {
+      await api.createExpense({
+        title: form.title,
+        value: parseFloat(form.value),
+        dueDate: form.dueDate,
+        type: form.type,
+        supplier: form.supplier || undefined,
+        description: form.description || undefined,
+        categoryId: form.categoryId || undefined,
+        costCenterId: form.costCenterId || undefined,
+        notes: form.notes || undefined,
+      });
+      setShowNew(false);
+      setForm({ title: '', value: '', dueDate: '', type: 'FIXED', supplier: '', description: '', categoryId: '', costCenterId: '', notes: '' });
+      showToast('Despesa criada com sucesso');
+      load();
+    } catch { showToast('Erro ao criar despesa', 'error'); }
   };
 
   const openEdit = (exp: any) => {
@@ -117,19 +120,22 @@ export default function ExpensesPage() {
 
   const handleUpdate = async () => {
     if (!editExpense) return;
-    await api.updateExpense(editExpense.id, {
-      title: editForm.title,
-      value: parseFloat(editForm.value),
-      dueDate: editForm.dueDate,
-      type: editForm.type,
-      supplier: editForm.supplier || undefined,
-      description: editForm.description || undefined,
-      categoryId: editForm.categoryId || undefined,
-      costCenterId: editForm.costCenterId || undefined,
-      notes: editForm.notes || undefined,
-    });
-    setEditExpense(null);
-    load();
+    try {
+      await api.updateExpense(editExpense.id, {
+        title: editForm.title,
+        value: parseFloat(editForm.value),
+        dueDate: editForm.dueDate,
+        type: editForm.type,
+        supplier: editForm.supplier || undefined,
+        description: editForm.description || undefined,
+        categoryId: editForm.categoryId || undefined,
+        costCenterId: editForm.costCenterId || undefined,
+        notes: editForm.notes || undefined,
+      });
+      setEditExpense(null);
+      showToast('Despesa atualizada');
+      load();
+    } catch { showToast('Erro ao atualizar despesa', 'error'); }
   };
 
   const handleCreateCategory = async () => {
@@ -148,6 +154,33 @@ export default function ExpensesPage() {
     setNewCCType('GENERAL');
     const ccs = await api.getCostCenters();
     setCostCenters(ccs);
+  };
+
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const duplicateExpense = async (exp: any) => {
+    const nextMonth = new Date(exp.dueDate);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    try {
+      await api.createExpense({
+        title: exp.title,
+        value: Number(exp.value),
+        dueDate: nextMonth.toISOString().split('T')[0],
+        type: exp.type,
+        supplier: exp.supplier || undefined,
+        description: exp.description || undefined,
+        categoryId: exp.categoryId || undefined,
+        costCenterId: exp.costCenterId || undefined,
+        notes: exp.notes || undefined,
+      });
+      showToast('Despesa duplicada para o próximo mês');
+      load();
+    } catch { showToast('Erro ao duplicar despesa', 'error'); }
   };
 
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
@@ -415,10 +448,10 @@ export default function ExpensesPage() {
                             <button onClick={() => openEdit(exp)} title="Editar" className="rounded p-1.5 text-gray-500 hover:bg-gray-100">
                               <Pencil className="h-4 w-4" />
                             </button>
-                            <button onClick={async () => { await api.approveExpense(exp.id); load(); }} title="Aprovar" className="rounded p-1.5 text-blue-600 hover:bg-blue-50">
+                            <button onClick={async () => { await api.approveExpense(exp.id); showToast('Despesa aprovada'); load(); }} title="Aprovar" className="rounded p-1.5 text-blue-600 hover:bg-blue-50">
                               <CheckCircle2 className="h-4 w-4" />
                             </button>
-                            <button onClick={async () => { await api.rejectExpense(exp.id); load(); }} title="Rejeitar" className="rounded p-1.5 text-red-600 hover:bg-red-50">
+                            <button onClick={async () => { await api.rejectExpense(exp.id); showToast('Despesa rejeitada'); load(); }} title="Rejeitar" className="rounded p-1.5 text-red-600 hover:bg-red-50">
                               <XCircle className="h-4 w-4" />
                             </button>
                           </>
@@ -428,11 +461,14 @@ export default function ExpensesPage() {
                             <button onClick={() => openEdit(exp)} title="Editar" className="rounded p-1.5 text-gray-500 hover:bg-gray-100">
                               <Pencil className="h-4 w-4" />
                             </button>
-                            <button onClick={async () => { await api.payExpense(exp.id); load(); }} title="Pagar" className="rounded p-1.5 text-green-600 hover:bg-green-50">
+                            <button onClick={async () => { await api.payExpense(exp.id); showToast('Despesa paga'); load(); }} title="Pagar" className="rounded p-1.5 text-green-600 hover:bg-green-50">
                               <DollarSign className="h-4 w-4" />
                             </button>
                           </>
                         )}
+                        <button onClick={() => duplicateExpense(exp)} title="Duplicar para próx. mês" className="rounded p-1.5 text-gray-400 hover:bg-gray-100">
+                          <Copy className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -543,6 +579,17 @@ export default function ExpensesPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={cn(
+          'fixed bottom-6 right-6 z-[60] flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg',
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        )}>
+          {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          {toast.message}
         </div>
       )}
     </div>

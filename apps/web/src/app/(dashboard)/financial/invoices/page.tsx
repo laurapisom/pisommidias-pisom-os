@@ -47,6 +47,50 @@ export default function InvoicesPage() {
   const [payInvoice, setPayInvoice] = useState<any>(null);
   const [payForm, setPayForm] = useState({ paidValue: '', paymentMethod: 'PIX', paidAt: '' });
 
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === invoices.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(invoices.map((inv: any) => inv.id)));
+    }
+  };
+
+  const bulkSend = async () => {
+    const pending = invoices.filter((inv: any) => selected.has(inv.id) && inv.status === 'PENDING');
+    if (pending.length === 0) return showToast('Nenhuma fatura pendente selecionada', 'error');
+    await Promise.all(pending.map((inv: any) => api.markInvoiceSent(inv.id)));
+    showToast(`${pending.length} fatura(s) marcada(s) como enviada(s)`);
+    setSelected(new Set());
+    load();
+  };
+
+  const bulkCancel = async () => {
+    const cancellable = invoices.filter((inv: any) => selected.has(inv.id) && ['PENDING', 'DRAFT'].includes(inv.status));
+    if (cancellable.length === 0) return showToast('Nenhuma fatura cancelável selecionada', 'error');
+    if (!confirm(`Cancelar ${cancellable.length} fatura(s)?`)) return;
+    await Promise.all(cancellable.map((inv: any) => api.cancelInvoice(inv.id)));
+    showToast(`${cancellable.length} fatura(s) cancelada(s)`);
+    setSelected(new Set());
+    load();
+  };
+
   const load = useCallback(() => {
     setLoading(true);
     const params: Record<string, string> = { page: String(page), limit: '20' };
@@ -74,24 +118,29 @@ export default function InvoicesPage() {
   useEffect(() => { setPage(1); }, [filter, search, startDate, endDate]);
 
   const handleGenerate = async () => {
-    const result = await api.generateInvoices();
-    alert(`${result.generated} fatura(s) gerada(s)`);
-    load();
+    try {
+      const result = await api.generateInvoices();
+      showToast(`${result.generated} fatura(s) gerada(s)`);
+      load();
+    } catch { showToast('Erro ao gerar faturas', 'error'); }
   };
 
   const handleCreateInvoice = async () => {
     if (!newForm.value || !newForm.dueDate) return;
-    await api.createInvoice({
-      value: parseFloat(newForm.value),
-      description: newForm.description,
-      dueDate: newForm.dueDate,
-      type: newForm.type,
-      discount: parseFloat(newForm.discount) || 0,
-      tax: parseFloat(newForm.tax) || 0,
-    });
-    setShowNew(false);
-    setNewForm({ value: '', description: '', dueDate: '', type: 'ONE_TIME', discount: '0', tax: '0' });
-    load();
+    try {
+      await api.createInvoice({
+        value: parseFloat(newForm.value),
+        description: newForm.description,
+        dueDate: newForm.dueDate,
+        type: newForm.type,
+        discount: parseFloat(newForm.discount) || 0,
+        tax: parseFloat(newForm.tax) || 0,
+      });
+      setShowNew(false);
+      setNewForm({ value: '', description: '', dueDate: '', type: 'ONE_TIME', discount: '0', tax: '0' });
+      showToast('Fatura criada com sucesso');
+      load();
+    } catch { showToast('Erro ao criar fatura', 'error'); }
   };
 
   const openPayModal = (inv: any) => {
@@ -106,25 +155,34 @@ export default function InvoicesPage() {
 
   const handlePay = async () => {
     if (!payInvoice) return;
-    await api.markInvoicePaid(payInvoice.id, {
-      paidValue: parseFloat(payForm.paidValue),
-      paymentMethod: payForm.paymentMethod,
-      paidAt: payForm.paidAt,
-    });
-    setShowPayModal(false);
-    setPayInvoice(null);
-    load();
+    try {
+      await api.markInvoicePaid(payInvoice.id, {
+        paidValue: parseFloat(payForm.paidValue),
+        paymentMethod: payForm.paymentMethod,
+        paidAt: payForm.paidAt,
+      });
+      setShowPayModal(false);
+      setPayInvoice(null);
+      showToast('Pagamento registrado com sucesso');
+      load();
+    } catch { showToast('Erro ao registrar pagamento', 'error'); }
   };
 
   const handleCancel = async (id: string) => {
     if (!confirm('Cancelar esta fatura?')) return;
-    await api.cancelInvoice(id);
-    load();
+    try {
+      await api.cancelInvoice(id);
+      showToast('Fatura cancelada');
+      load();
+    } catch { showToast('Erro ao cancelar fatura', 'error'); }
   };
 
   const handleSend = async (id: string) => {
-    await api.markInvoiceSent(id);
-    load();
+    try {
+      await api.markInvoiceSent(id);
+      showToast('Fatura marcada como enviada');
+      load();
+    } catch { showToast('Erro ao enviar fatura', 'error'); }
   };
 
   const openDetail = async (id: string) => {
@@ -270,11 +328,28 @@ export default function InvoicesPage() {
         </div>
       </div>
 
+      {/* Bulk Actions */}
+      {selected.size > 0 && (
+        <div className="mb-3 flex items-center gap-3 rounded-lg border border-pisom-200 bg-pisom-50 px-4 py-2.5">
+          <span className="text-sm font-medium text-pisom-700">{selected.size} selecionada(s)</span>
+          <button onClick={bulkSend} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">
+            <Send className="mr-1 inline h-3 w-3" /> Enviar
+          </button>
+          <button onClick={bulkCancel} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+            <XCircle className="mr-1 inline h-3 w-3" /> Cancelar
+          </button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-gray-500 hover:text-gray-700">Limpar seleção</button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-200">
+              <th className="w-10 px-3 py-3">
+                <input type="checkbox" checked={invoices.length > 0 && selected.size === invoices.length} onChange={toggleAll} className="h-4 w-4 rounded border-gray-300 text-pisom-600 focus:ring-pisom-500" />
+              </th>
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Nº</th>
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Descrição</th>
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Empresa</th>
@@ -298,13 +373,16 @@ export default function InvoicesPage() {
                 </tr>
               ))
             ) : invoices.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Nenhuma fatura encontrada</td></tr>
+              <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400">Nenhuma fatura encontrada</td></tr>
             ) : (
               invoices.map((inv: any) => {
                 const st = statusConfig[inv.status] || statusConfig.PENDING;
                 const isOverdue = inv.status === 'OVERDUE' || (inv.status === 'PENDING' && new Date(inv.dueDate) < new Date());
                 return (
-                  <tr key={inv.id} className={cn('transition hover:bg-gray-50', isOverdue && 'bg-red-50/50')}>
+                  <tr key={inv.id} className={cn('transition hover:bg-gray-50', isOverdue && 'bg-red-50/50', selected.has(inv.id) && 'bg-pisom-50/50')}>
+                    <td className="w-10 px-3 py-3">
+                      <input type="checkbox" checked={selected.has(inv.id)} onChange={() => toggleSelect(inv.id)} className="h-4 w-4 rounded border-gray-300 text-pisom-600 focus:ring-pisom-500" />
+                    </td>
                     <td className="px-5 py-3 text-sm font-mono text-gray-500">#{inv.number}</td>
                     <td className="px-5 py-3">
                       <p className="text-sm font-medium text-gray-900">{inv.description || inv.contract?.title || '—'}</p>
@@ -558,6 +636,17 @@ export default function InvoicesPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={cn(
+          'fixed bottom-6 right-6 z-[60] flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg transition-all',
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        )}>
+          {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          {toast.message}
         </div>
       )}
     </div>

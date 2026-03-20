@@ -463,6 +463,36 @@ export default function ContractsPage() {
                   )}
                 </div>
 
+                {/* Revenue Summary */}
+                {selectedContract.invoices?.length > 0 && (() => {
+                  const invoices = selectedContract.invoices;
+                  const totalInvoiced = invoices.reduce((s: number, i: any) => s + Number(i.totalValue), 0);
+                  const totalPaid = invoices.filter((i: any) => i.status === 'PAID').reduce((s: number, i: any) => s + Number(i.paidValue || i.totalValue), 0);
+                  const overdue = invoices.filter((i: any) => i.status === 'OVERDUE').length;
+                  const paidCount = invoices.filter((i: any) => i.status === 'PAID').length;
+                  const rate = invoices.length > 0 ? Math.round((paidCount / invoices.length) * 100) : 0;
+                  return (
+                    <div className="mb-4 grid grid-cols-4 gap-3">
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center">
+                        <p className="text-xs text-gray-500">Faturado</p>
+                        <p className="mt-0.5 text-sm font-bold text-gray-900">{fmt(totalInvoiced)}</p>
+                      </div>
+                      <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center">
+                        <p className="text-xs text-green-600">Recebido</p>
+                        <p className="mt-0.5 text-sm font-bold text-green-700">{fmt(totalPaid)}</p>
+                      </div>
+                      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-center">
+                        <p className="text-xs text-red-600">Vencidas</p>
+                        <p className="mt-0.5 text-sm font-bold text-red-700">{overdue}</p>
+                      </div>
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-center">
+                        <p className="text-xs text-blue-600">Taxa pgto.</p>
+                        <p className="mt-0.5 text-sm font-bold text-blue-700">{rate}%</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Invoices History */}
                 {selectedContract.invoices?.length > 0 && (
                   <div>
