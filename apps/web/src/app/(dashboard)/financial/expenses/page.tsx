@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Palette } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Palette, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
@@ -25,8 +25,12 @@ const defaultColors = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [summary, setSummary] = useState<any>(null);
   const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -50,15 +54,24 @@ export default function ExpensesPage() {
   const [newCCType, setNewCCType] = useState('GENERAL');
 
   const load = useCallback(() => {
-    const params: Record<string, string> = {};
+    setLoading(true);
+    const params: Record<string, string> = { page: String(page), limit: '20' };
     if (filter) params.status = filter;
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
-    api.getExpenses(params).then((res: any) => setExpenses(res.data || [])).catch(console.error).finally(() => setLoading(false));
+    api.getExpenses(params)
+      .then((res: any) => {
+        setExpenses(res.data || []);
+        setTotalCount(res.total || 0);
+        setTotalPages(res.totalPages || 1);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
     api.getExpenseSummary().then(setSummary).catch(() => null);
-  }, [filter, startDate, endDate]);
+  }, [filter, startDate, endDate, page]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [filter, startDate, endDate]);
 
   useEffect(() => {
     api.getExpenseCategories().then(setCategories).catch(() => null);
@@ -385,6 +398,32 @@ export default function ExpensesPage() {
             )}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-gray-200 px-5 py-3">
+            <p className="text-xs text-gray-500">
+              Página {page} de {totalPages} · {totalCount} despesas
+            </p>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const p = page <= 3 ? i + 1 : page + i - 2;
+                if (p < 1 || p > totalPages) return null;
+                return (
+                  <button key={p} onClick={() => setPage(p)} className={cn('rounded px-2.5 py-1 text-xs font-medium', p === page ? 'bg-pisom-100 text-pisom-700' : 'text-gray-500 hover:bg-gray-100')}>
+                    {p}
+                  </button>
+                );
+              })}
+              <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Edit Modal */}

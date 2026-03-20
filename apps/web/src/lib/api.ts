@@ -299,8 +299,16 @@ class ApiClient {
     return this.post<any>('/financial/invoices', data);
   }
 
+  updateInvoice(id: string, data: any) {
+    return this.patch<any>(`/financial/invoices/${id}`, data);
+  }
+
   markInvoicePaid(id: string, data?: any) {
     return this.patch<any>(`/financial/invoices/${id}/pay`, data || {});
+  }
+
+  markInvoiceSent(id: string) {
+    return this.patch<any>(`/financial/invoices/${id}/send`, {});
   }
 
   cancelInvoice(id: string) {

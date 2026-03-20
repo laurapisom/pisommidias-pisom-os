@@ -24,13 +24,14 @@ export class InvoicesController {
     @Query('status') status?: string,
     @Query('contractId') contractId?: string,
     @Query('companyId') companyId?: string,
+    @Query('search') search?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.invoicesService.findAll(user.organizationId, {
-      status, contractId, companyId, startDate, endDate,
+      status, contractId, companyId, search, startDate, endDate,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
@@ -60,10 +61,22 @@ export class InvoicesController {
     return this.invoicesService.findById(user.organizationId, id);
   }
 
+  @Patch(':id')
+  @ApiOperation({ summary: 'Atualizar fatura' })
+  update(@CurrentUser() user: any, @Param('id') id: string, @Body() body: any) {
+    return this.invoicesService.update(user.organizationId, id, body);
+  }
+
   @Patch(':id/pay')
   @ApiOperation({ summary: 'Registrar pagamento' })
   markPaid(@CurrentUser() user: any, @Param('id') id: string, @Body() body: any) {
     return this.invoicesService.markPaid(user.organizationId, id, body);
+  }
+
+  @Patch(':id/send')
+  @ApiOperation({ summary: 'Marcar fatura como enviada' })
+  markSent(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.invoicesService.markSent(user.organizationId, id);
   }
 
   @Patch(':id/cancel')

@@ -52,6 +52,7 @@ export class InvoicesService {
     status?: string;
     contractId?: string;
     companyId?: string;
+    search?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -64,6 +65,12 @@ export class InvoicesService {
     if (filters?.status) where.status = filters.status;
     if (filters?.contractId) where.contractId = filters.contractId;
     if (filters?.companyId) where.companyId = filters.companyId;
+    if (filters?.search) {
+      where.OR = [
+        { description: { contains: filters.search, mode: 'insensitive' } },
+        { number: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
     if (filters?.startDate || filters?.endDate) {
       where.dueDate = {};
       if (filters?.startDate) where.dueDate.gte = new Date(filters.startDate);
@@ -75,6 +82,7 @@ export class InvoicesService {
         where,
         include: {
           contract: { select: { id: true, title: true, companyId: true } },
+          company: { select: { id: true, name: true } },
         },
         orderBy: { dueDate: 'desc' },
         skip: (page - 1) * limit,
@@ -90,11 +98,44 @@ export class InvoicesService {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id, organizationId },
       include: {
-        contract: true,
+        contract: { select: { id: true, title: true, value: true, billingCycle: true } },
+        company: { select: { id: true, name: true } },
       },
     });
     if (!invoice) throw new NotFoundException('Fatura não encontrada');
     return invoice;
+  }
+
+  async update(organizationId: string, id: string, data: Record<string, any>) {
+    await this.ensureExists(organizationId, id);
+    const updateData: any = {};
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.dueDate !== undefined) updateData.dueDate = new Date(data.dueDate);
+    if (data.notes !== undefined) updateData.notes = data.notes;
+    if (data.value !== undefined) {
+      updateData.value = data.value;
+      const discount = data.discount ?? 0;
+      const tax = data.tax ?? 0;
+      updateData.discount = discount;
+      updateData.tax = tax;
+      updateData.totalValue = data.value - discount + tax;
+    }
+    return this.prisma.invoice.update({
+      where: { id },
+      data: updateData,
+      include: {
+        contract: { select: { id: true, title: true } },
+        company: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async markSent(organizationId: string, id: string) {
+    await this.ensureExists(organizationId, id);
+    return this.prisma.invoice.update({
+      where: { id },
+      data: { status: 'SENT' },
+    });
   }
 
   async markPaid(organizationId: string, id: string, data: {
