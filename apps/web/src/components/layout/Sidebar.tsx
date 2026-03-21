@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -68,19 +69,87 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [orgName, setOrgName] = useState('Pisom OS');
+  const [orgLogo, setOrgLogo] = useState('');
+
+  useEffect(() => {
+    // Load from cache first for instant render
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('pisom_org_brand');
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          if (data.name) setOrgName(data.name);
+          if (data.logo) setOrgLogo(data.logo);
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Fetch fresh data
+    api.getMe().then((me: any) => {
+      const org = me.organization;
+      if (org) {
+        const brandData = { name: org.name || 'Pisom OS', logo: org.logo || '' };
+        setOrgName(brandData.name);
+        setOrgLogo(brandData.logo);
+        localStorage.setItem('pisom_org_brand', JSON.stringify(brandData));
+      }
+    }).catch(() => { /* ignore */ });
+  }, []);
+
+  // Listen for brand updates from settings page
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === 'pisom_org_brand' && e.newValue) {
+        try {
+          const data = JSON.parse(e.newValue);
+          if (data.name) setOrgName(data.name);
+          if (data.logo) setOrgLogo(data.logo);
+        } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('storage', handler);
+
+    // Also listen for custom event (same-tab updates)
+    const customHandler = () => {
+      const cached = localStorage.getItem('pisom_org_brand');
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          if (data.name) setOrgName(data.name);
+          if (data.logo) setOrgLogo(data.logo);
+        } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('pisom_brand_updated', customHandler);
+
+    return () => {
+      window.removeEventListener('storage', handler);
+      window.removeEventListener('pisom_brand_updated', customHandler);
+    };
+  }, []);
 
   const handleLogout = () => {
     api.clearToken();
+    localStorage.removeItem('pisom_org_brand');
     router.push('/login');
   };
 
   return (
     <aside className="fixed left-0 top-0 z-30 flex h-full w-[260px] flex-col border-r border-gray-200 bg-white">
       <div className="flex h-16 items-center gap-3 border-b border-gray-200 px-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-pisom-600 text-sm font-bold text-white">
-          P
-        </div>
-        <span className="text-lg font-bold text-gray-900">Pisom OS</span>
+        {orgLogo ? (
+          <img
+            src={orgLogo}
+            alt={orgName}
+            className="h-8 w-8 rounded-lg object-cover"
+          />
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-pisom-600 text-sm font-bold text-white">
+            {orgName.charAt(0).toUpperCase()}
+          </div>
+        )}
+        <span className="truncate text-lg font-bold text-gray-900">{orgName}</span>
       </div>
 
       <nav className="flex-1 overflow-y-auto p-3 scrollbar-thin">

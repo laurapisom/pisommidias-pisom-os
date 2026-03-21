@@ -22,6 +22,10 @@ import {
   FileText,
   Tag,
   FolderOpen,
+  Upload,
+  ImageIcon,
+  X,
+  Palette,
 } from 'lucide-react';
 
 const TABS = [
@@ -74,6 +78,12 @@ export default function SettingsPage() {
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgMsg, setOrgMsg] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Brand customization state
+  const [orgLogo, setOrgLogo] = useState('');
+  const [logoPreview, setLogoPreview] = useState('');
+  const [brandSaving, setBrandSaving] = useState(false);
+  const [brandMsg, setBrandMsg] = useState('');
 
   // Team state
   const [team, setTeam] = useState<any[]>([]);
@@ -155,6 +165,8 @@ export default function SettingsPage() {
         setProfileForm({ firstName: me.firstName || '', lastName: me.lastName || '' });
         setOrgName(me.organization?.name || '');
         setOrgId(me.organization?.id || '');
+        setOrgLogo(me.organization?.logo || '');
+        setLogoPreview(me.organization?.logo || '');
         setTeam(teamData);
       } catch {
         // ignore
@@ -415,57 +427,162 @@ export default function SettingsPage() {
 
       {activeTab === 'organizacao' && (
         <div className="space-y-6">
+          {/* Brand Customization */}
           <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">
-              <Building2 className="mr-2 inline h-5 w-5" />
-              Dados da Organização
+            <h2 className="mb-1 text-lg font-semibold text-gray-900">
+              <Palette className="mr-2 inline h-5 w-5" />
+              Personalização do Sistema
             </h2>
-            <div className="grid gap-4">
-              <div>
+            <p className="mb-6 text-sm text-gray-500">
+              Personalize o nome e a logo que aparecem na barra lateral do sistema.
+            </p>
+
+            <div className="flex flex-col gap-6 sm:flex-row">
+              {/* Logo upload */}
+              <div className="flex flex-col items-center gap-3">
                 <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Nome da Organização
+                  Logo (1:1)
+                </label>
+                <div className="relative group">
+                  {logoPreview ? (
+                    <div className="relative">
+                      <img
+                        src={logoPreview}
+                        alt="Logo"
+                        className="h-24 w-24 rounded-xl border-2 border-gray-200 object-cover"
+                      />
+                      <button
+                        onClick={() => {
+                          setLogoPreview('');
+                          setOrgLogo('');
+                        }}
+                        className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white shadow-md hover:bg-red-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 transition hover:border-pisom-400 hover:bg-pisom-50">
+                      <ImageIcon className="mb-1 h-6 w-6 text-gray-400" />
+                      <span className="text-xs text-gray-400">Upload</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 500_000) {
+                            setBrandMsg('A imagem deve ter no máximo 500KB.');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            const base64 = reader.result as string;
+                            setLogoPreview(base64);
+                            setOrgLogo(base64);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+                <span className="text-xs text-gray-400">PNG, JPG ou SVG (max 500KB)</span>
+              </div>
+
+              {/* Preview */}
+              <div className="flex-1">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Nome do Sistema
                 </label>
                 <input
                   type="text"
                   className={inputClass}
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
+                  placeholder="Ex: Minha Agência"
                 />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  ID da Organização
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    className={cn(inputClass, 'bg-gray-50 font-mono text-xs text-gray-500')}
-                    value={orgId}
-                    readOnly
-                  />
-                  <button
-                    onClick={handleCopyId}
-                    className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
-                  >
-                    <Copy className="h-4 w-4" />
-                    {copied ? 'Copiado!' : 'Copiar'}
-                  </button>
+
+                {/* Live preview */}
+                <div className="mt-4">
+                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    Preview da barra lateral
+                  </label>
+                  <div className="inline-flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-sm">
+                    {logoPreview ? (
+                      <img
+                        src={logoPreview}
+                        alt="Preview"
+                        className="h-8 w-8 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-pisom-600 text-sm font-bold text-white">
+                        {(orgName || 'P').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-lg font-bold text-gray-900">
+                      {orgName || 'Pisom OS'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
+
+            <div className="mt-6 flex items-center gap-4">
+              <button
+                className={btnPrimary}
+                disabled={brandSaving}
+                onClick={async () => {
+                  setBrandSaving(true);
+                  setBrandMsg('');
+                  try {
+                    await api.updateOrganization({ name: orgName, logo: orgLogo || null });
+                    const brandData = { name: orgName, logo: orgLogo };
+                    localStorage.setItem('pisom_org_brand', JSON.stringify(brandData));
+                    window.dispatchEvent(new Event('pisom_brand_updated'));
+                    setBrandMsg('Personalização salva com sucesso!');
+                  } catch (err: any) {
+                    setBrandMsg(err.message || 'Erro ao salvar personalização.');
+                  } finally {
+                    setBrandSaving(false);
+                  }
+                }}
+              >
+                {brandSaving ? 'Salvando...' : 'Salvar Personalização'}
+              </button>
+              {brandMsg && (
+                <span className="text-sm text-gray-600">{brandMsg}</span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button
-              className={btnPrimary}
-              disabled={orgSaving}
-              onClick={handleOrgSave}
-            >
-              {orgSaving ? 'Salvando...' : 'Salvar Alterações'}
-            </button>
-            {orgMsg && (
-              <span className="text-sm text-gray-600">{orgMsg}</span>
-            )}
+          {/* Organization Data */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+              <Building2 className="mr-2 inline h-5 w-5" />
+              Dados da Organização
+            </h2>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                ID da Organização
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className={cn(inputClass, 'bg-gray-50 font-mono text-xs text-gray-500')}
+                  value={orgId}
+                  readOnly
+                />
+                <button
+                  onClick={handleCopyId}
+                  className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  <Copy className="h-4 w-4" />
+                  {copied ? 'Copiado!' : 'Copiar'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

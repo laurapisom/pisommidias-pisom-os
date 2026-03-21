@@ -22,7 +22,7 @@ export class OrganizationsService {
     return org;
   }
 
-  async update(id: string, data: { name?: string; logo?: string }) {
+  async update(id: string, data: { name?: string; logo?: string | null }) {
     return this.prisma.organization.update({ where: { id }, data });
   }
 

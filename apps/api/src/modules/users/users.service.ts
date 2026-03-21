@@ -18,10 +18,30 @@ export class UsersService {
         isActive: true,
         lastLoginAt: true,
         createdAt: true,
+        memberships: {
+          select: {
+            role: true,
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                logo: true,
+              },
+            },
+          },
+          take: 1,
+        },
       },
     });
     if (!user) throw new NotFoundException('Usuário não encontrado');
-    return user;
+    const membership = user.memberships?.[0];
+    return {
+      ...user,
+      memberships: undefined,
+      organization: membership?.organization || null,
+      role: membership?.role || null,
+    };
   }
 
   async getOrganizationMembers(organizationId: string) {

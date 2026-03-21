@@ -20,7 +20,13 @@ export class OrganizationsController {
 
   @Patch('current')
   @ApiOperation({ summary: 'Atualizar organização' })
-  update(@CurrentUser() user: any, @Body() body: { name?: string; logo?: string }) {
+  update(@CurrentUser() user: any, @Body() body: { name?: string; logo?: string | null }) {
+    return this.orgService.update(user.organizationId, body);
+  }
+
+  @Patch('me')
+  @ApiOperation({ summary: 'Atualizar organização (alias)' })
+  updateMe(@CurrentUser() user: any, @Body() body: { name?: string; logo?: string | null }) {
     return this.orgService.update(user.organizationId, body);
   }
 
