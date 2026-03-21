@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import {
@@ -94,10 +94,58 @@ export default function SettingsPage() {
     categories: false,
     tags: false,
   });
-  const [resetStep, setResetStep] = useState<'select' | 'confirm' | 'done'>('select');
+  const [resetStep, setResetStep] = useState<'select' | 'confirm' | 'processing' | 'done'>('select');
   const [resetting, setResetting] = useState(false);
   const [resetResult, setResetResult] = useState<Record<string, number> | null>(null);
   const [confirmText, setConfirmText] = useState('');
+  const [resetProgress, setResetProgress] = useState(0);
+  const [resetCurrentLabel, setResetCurrentLabel] = useState('');
+  const [resetError, setResetError] = useState('');
+
+  const RESET_LABELS: Record<string, string> = {
+    financial: 'Apagando dados financeiros...',
+    categories: 'Removendo categorias e centros de custo...',
+    tags: 'Removendo tags...',
+    tasks: 'Apagando tarefas e comentários...',
+    onboarding: 'Removendo onboardings e templates...',
+    content: 'Apagando conteúdo, posts e ideias...',
+    crm: 'Removendo CRM (deals, leads, contatos, empresas)...',
+    pipeline: 'Resetando pipelines...',
+  };
+
+  const executeReset = useCallback(async () => {
+    setResetStep('processing');
+    setResetProgress(0);
+    setResetError('');
+    setResetCurrentLabel('Preparando exclusão...');
+
+    const selectedKeys = Object.entries(resetOptions)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    const totalSteps = selectedKeys.length + 1;
+
+    // Animate progress through selected steps
+    for (let i = 0; i < selectedKeys.length; i++) {
+      setResetCurrentLabel(RESET_LABELS[selectedKeys[i]] || `Processando ${selectedKeys[i]}...`);
+      setResetProgress(Math.round(((i + 1) / totalSteps) * 80));
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    setResetCurrentLabel('Enviando requisição ao servidor...');
+    setResetProgress(85);
+
+    try {
+      const result = await api.resetOrganizationData(resetOptions);
+      setResetProgress(100);
+      setResetCurrentLabel('Concluído!');
+      await new Promise((r) => setTimeout(r, 500));
+      setResetResult(result.deleted);
+      setResetStep('done');
+    } catch (err: any) {
+      setResetError(err.message || 'Erro ao resetar dados. Tente novamente.');
+      setResetStep('confirm');
+    }
+  }, [resetOptions]);
 
   useEffect(() => {
     async function load() {
@@ -847,47 +895,123 @@ export default function SettingsPage() {
                   Voltar
                 </button>
                 <button
-                  disabled={confirmText !== 'APAGAR DADOS' || resetting}
-                  onClick={async () => {
-                    setResetting(true);
-                    try {
-                      const result = await api.resetOrganizationData(resetOptions);
-                      setResetResult(result.deleted);
-                      setResetStep('done');
-                    } catch (err: any) {
-                      alert(err.message || 'Erro ao resetar dados.');
-                    } finally {
-                      setResetting(false);
-                    }
-                  }}
+                  disabled={confirmText !== 'APAGAR DADOS'}
+                  onClick={() => executeReset()}
                   className="flex-1 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {resetting ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Apagando...
-                    </span>
-                  ) : (
-                    'Apagar dados permanentemente'
-                  )}
+                  Apagar dados permanentemente
                 </button>
+              {resetError && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <AlertTriangle className="mr-1 inline h-4 w-4" />
+                  {resetError}
+                </div>
+              )}
+              </div>
+            </div>
+          )}
+
+          {resetStep === 'processing' && (
+            <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+              <div className="mx-auto max-w-md text-center">
+                {/* Animated icon */}
+                <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-red-100">
+                  <RotateCcw className="h-10 w-10 animate-spin text-red-600" style={{ animationDuration: '2s' }} />
+                </div>
+
+                <h2 className="mb-2 text-xl font-bold text-gray-900">
+                  Apagando dados...
+                </h2>
+                <p className="mb-6 text-sm text-gray-500">
+                  Por favor, não feche esta página. Isso pode levar alguns segundos.
+                </p>
+
+                {/* Progress bar */}
+                <div className="mb-3 h-4 w-full overflow-hidden rounded-full bg-gray-200">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-red-500 to-red-600 transition-all duration-500 ease-out"
+                    style={{ width: `${resetProgress}%` }}
+                  />
+                </div>
+
+                {/* Progress percentage and label */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">{resetCurrentLabel}</span>
+                  <span className="font-semibold text-red-600">{resetProgress}%</span>
+                </div>
+
+                {/* Step indicators */}
+                <div className="mt-6 space-y-2">
+                  {Object.entries(resetOptions)
+                    .filter(([, v]) => v)
+                    .map(([key], idx, arr) => {
+                      const stepProgress = ((idx + 1) / (arr.length + 1)) * 80;
+                      const isDone = resetProgress > stepProgress;
+                      const isCurrent = !isDone && resetProgress >= ((idx) / (arr.length + 1)) * 80;
+                      const iconMap: Record<string, any> = {
+                        financial: DollarSign,
+                        crm: UserCheck,
+                        pipeline: Kanban,
+                        tasks: CheckSquare,
+                        onboarding: ClipboardList,
+                        content: FileText,
+                        categories: FolderOpen,
+                        tags: Tag,
+                      };
+                      const labelMap: Record<string, string> = {
+                        financial: 'Financeiro',
+                        crm: 'CRM',
+                        pipeline: 'Pipeline',
+                        tasks: 'Tarefas',
+                        onboarding: 'Onboarding',
+                        content: 'Conteúdo',
+                        categories: 'Categorias',
+                        tags: 'Tags',
+                      };
+                      const Icon = iconMap[key] || FileText;
+                      return (
+                        <div
+                          key={key}
+                          className={cn(
+                            'flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all',
+                            isDone ? 'bg-green-50 text-green-700' :
+                            isCurrent ? 'bg-red-50 text-red-700 font-medium' :
+                            'bg-gray-50 text-gray-400',
+                          )}
+                        >
+                          {isDone ? (
+                            <CheckSquare className="h-4 w-4 text-green-500" />
+                          ) : isCurrent ? (
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
+                          ) : (
+                            <Icon className="h-4 w-4" />
+                          )}
+                          <span>{labelMap[key] || key}</span>
+                          {isDone && <span className="ml-auto text-xs text-green-500">Concluído</span>}
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             </div>
           )}
 
           {resetStep === 'done' && resetResult && (
-            <div className="rounded-xl border border-green-200 bg-white p-6 shadow-sm">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                  <CheckSquare className="h-6 w-6 text-green-600" />
+            <div className="rounded-xl border-2 border-green-300 bg-white p-6 shadow-sm">
+              {/* Success header */}
+              <div className="mb-6 text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+                  <CheckSquare className="h-8 w-8 text-green-600" />
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-green-800">
-                    Dados removidos com sucesso
-                  </h2>
-                  <p className="text-sm text-green-600">
-                    Os dados selecionados foram apagados permanentemente.
-                  </p>
+                <h2 className="text-xl font-bold text-green-800">
+                  Dados removidos com sucesso!
+                </h2>
+                <p className="mt-1 text-sm text-green-600">
+                  Todos os dados selecionados foram apagados permanentemente.
+                </p>
+                <div className="mx-auto mt-3 inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-1.5 text-sm font-semibold text-green-700">
+                  <Trash2 className="h-4 w-4" />
+                  {Object.values(resetResult).reduce((a, b) => a + b, 0)} registros removidos
                 </div>
               </div>
 

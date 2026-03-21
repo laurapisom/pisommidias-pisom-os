@@ -2,7 +2,8 @@ import { Controller, Get, Patch, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { OrganizationsService, ResetOptions } from './organizations.service';
+import { OrganizationsService } from './organizations.service';
+import { ResetDataDto } from './dto/reset-data.dto';
 
 @ApiTags('Organizations')
 @ApiBearerAuth()
@@ -25,7 +26,7 @@ export class OrganizationsController {
 
   @Post('reset')
   @ApiOperation({ summary: 'Resetar dados da organização seletivamente' })
-  reset(@CurrentUser() user: any, @Body() body: ResetOptions) {
+  reset(@CurrentUser() user: any, @Body() body: ResetDataDto) {
     return this.orgService.resetData(user.organizationId, body);
   }
 }
