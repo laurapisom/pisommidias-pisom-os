@@ -67,7 +67,15 @@ export class OrganizationsService {
 
       // 4. Tasks & Comments
       if (options.tasks) {
-        const cm = await tx.comment.deleteMany({ where: { organizationId } });
+        // Comments don't have organizationId, delete via task/deal relations
+        const cm = await tx.comment.deleteMany({
+          where: {
+            OR: [
+              { task: { organizationId } },
+              { deal: { organizationId } },
+            ],
+          },
+        });
         deleted['comments'] = cm.count;
         const tk = await tx.task.deleteMany({ where: { organizationId } });
         deleted['tasks'] = tk.count;
@@ -172,11 +180,11 @@ export class OrganizationsService {
             organizationId,
             stages: {
               create: [
-                { name: 'Novo Lead', order: 0, probability: 10, color: '#6366f1' },
-                { name: 'Qualificação', order: 1, probability: 25, color: '#8b5cf6' },
-                { name: 'Proposta', order: 2, probability: 50, color: '#a855f7' },
-                { name: 'Negociação', order: 3, probability: 75, color: '#d946ef' },
-                { name: 'Fechamento', order: 4, probability: 90, color: '#ec4899' },
+                { name: 'Novo Lead', position: 0, probability: 10, color: '#6366f1' },
+                { name: 'Qualificação', position: 1, probability: 25, color: '#8b5cf6' },
+                { name: 'Proposta', position: 2, probability: 50, color: '#a855f7' },
+                { name: 'Negociação', position: 3, probability: 75, color: '#d946ef' },
+                { name: 'Fechamento', position: 4, probability: 90, color: '#ec4899' },
               ],
             },
           },
