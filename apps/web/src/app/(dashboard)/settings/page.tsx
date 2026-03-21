@@ -472,17 +472,29 @@ export default function SettingsPage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
-                          if (file.size > 500_000) {
-                            setBrandMsg('A imagem deve ter no máximo 500KB.');
+                          if (file.size > 2_000_000) {
+                            setBrandMsg('A imagem deve ter no máximo 2MB.');
                             return;
                           }
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            const base64 = reader.result as string;
-                            setLogoPreview(base64);
-                            setOrgLogo(base64);
+                          // Compress and resize to 128x128
+                          const img = new Image();
+                          const url = URL.createObjectURL(file);
+                          img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 128;
+                            canvas.height = 128;
+                            const ctx = canvas.getContext('2d')!;
+                            // Draw centered/cropped square
+                            const size = Math.min(img.width, img.height);
+                            const sx = (img.width - size) / 2;
+                            const sy = (img.height - size) / 2;
+                            ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
+                            const compressed = canvas.toDataURL('image/webp', 0.8);
+                            setLogoPreview(compressed);
+                            setOrgLogo(compressed);
+                            URL.revokeObjectURL(url);
                           };
-                          reader.readAsDataURL(file);
+                          img.src = url;
                         }}
                       />
                     </label>
