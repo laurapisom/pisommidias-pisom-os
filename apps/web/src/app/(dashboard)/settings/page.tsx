@@ -12,12 +12,23 @@ import {
   Copy,
   Trash2,
   Plus,
+  AlertTriangle,
+  RotateCcw,
+  DollarSign,
+  UserCheck,
+  Kanban,
+  CheckSquare,
+  ClipboardList,
+  FileText,
+  Tag,
+  FolderOpen,
 } from 'lucide-react';
 
 const TABS = [
   { key: 'perfil', label: 'Perfil', icon: User },
   { key: 'organizacao', label: 'Organização', icon: Building2 },
   { key: 'equipe', label: 'Equipe', icon: Users },
+  { key: 'resetar', label: 'Resetar Dados', icon: RotateCcw },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -71,6 +82,22 @@ export default function SettingsPage() {
   const [inviteRole, setInviteRole] = useState('MEMBER');
   const [inviting, setInviting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  // Reset state
+  const [resetOptions, setResetOptions] = useState({
+    financial: false,
+    crm: false,
+    pipeline: false,
+    tasks: false,
+    onboarding: false,
+    content: false,
+    categories: false,
+    tags: false,
+  });
+  const [resetStep, setResetStep] = useState<'select' | 'confirm' | 'done'>('select');
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<Record<string, number> | null>(null);
+  const [confirmText, setConfirmText] = useState('');
 
   useEffect(() => {
     async function load() {
@@ -551,6 +578,388 @@ export default function SettingsPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'resetar' && (
+        <div className="space-y-6">
+          {/* Warning Banner */}
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+            <div>
+              <h3 className="text-sm font-semibold text-red-800">Zona de Perigo</h3>
+              <p className="mt-1 text-sm text-red-700">
+                As ações abaixo apagam dados permanentemente e não podem ser desfeitas.
+                Selecione com cuidado os dados que deseja remover.
+              </p>
+            </div>
+          </div>
+
+          {resetStep === 'select' && (
+            <>
+              {/* Reset options */}
+              <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-2 text-lg font-semibold text-gray-900">
+                  <RotateCcw className="mr-2 inline h-5 w-5" />
+                  Selecione o que deseja apagar
+                </h2>
+                <p className="mb-6 text-sm text-gray-500">
+                  Marque as categorias de dados que deseja remover permanentemente.
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {([
+                    {
+                      key: 'financial' as const,
+                      icon: DollarSign,
+                      label: 'Financeiro',
+                      desc: 'Contratos, faturas e despesas',
+                      color: 'text-green-600 bg-green-50',
+                    },
+                    {
+                      key: 'crm' as const,
+                      icon: UserCheck,
+                      label: 'CRM',
+                      desc: 'Deals, leads, contatos, empresas e atividades',
+                      color: 'text-blue-600 bg-blue-50',
+                    },
+                    {
+                      key: 'pipeline' as const,
+                      icon: Kanban,
+                      label: 'Pipeline',
+                      desc: 'Pipelines e estágios (recria o padrão)',
+                      color: 'text-purple-600 bg-purple-50',
+                    },
+                    {
+                      key: 'tasks' as const,
+                      icon: CheckSquare,
+                      label: 'Tarefas',
+                      desc: 'Tarefas e comentários',
+                      color: 'text-amber-600 bg-amber-50',
+                    },
+                    {
+                      key: 'onboarding' as const,
+                      icon: ClipboardList,
+                      label: 'Onboarding',
+                      desc: 'Onboardings, checklists e templates',
+                      color: 'text-cyan-600 bg-cyan-50',
+                    },
+                    {
+                      key: 'content' as const,
+                      icon: FileText,
+                      label: 'Conteúdo',
+                      desc: 'Posts, ideias, perfis e versões',
+                      color: 'text-pink-600 bg-pink-50',
+                    },
+                    {
+                      key: 'categories' as const,
+                      icon: FolderOpen,
+                      label: 'Categorias e Centros de Custo',
+                      desc: 'Categorias de despesa e centros de custo',
+                      color: 'text-orange-600 bg-orange-50',
+                    },
+                    {
+                      key: 'tags' as const,
+                      icon: Tag,
+                      label: 'Tags',
+                      desc: 'Tags e associações de tags',
+                      color: 'text-indigo-600 bg-indigo-50',
+                    },
+                  ]).map((item) => {
+                    const Icon = item.icon;
+                    const checked = resetOptions[item.key];
+                    return (
+                      <label
+                        key={item.key}
+                        className={cn(
+                          'flex cursor-pointer items-start gap-3 rounded-lg border-2 p-4 transition-all',
+                          checked
+                            ? 'border-red-300 bg-red-50'
+                            : 'border-gray-200 bg-white hover:border-gray-300',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            setResetOptions((prev) => ({
+                              ...prev,
+                              [item.key]: e.target.checked,
+                            }))
+                          }
+                          className="mt-1 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn('rounded-md p-1', item.color)}>
+                              <Icon className="h-4 w-4" />
+                            </span>
+                            <span className="text-sm font-semibold text-gray-900">
+                              {item.label}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-500">{item.desc}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* Select all / Deselect all */}
+                <div className="mt-4 flex gap-3">
+                  <button
+                    onClick={() =>
+                      setResetOptions({
+                        financial: true,
+                        crm: true,
+                        pipeline: true,
+                        tasks: true,
+                        onboarding: true,
+                        content: true,
+                        categories: true,
+                        tags: true,
+                      })
+                    }
+                    className="text-sm font-medium text-red-600 hover:text-red-700"
+                  >
+                    Selecionar tudo
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    onClick={() =>
+                      setResetOptions({
+                        financial: false,
+                        crm: false,
+                        pipeline: false,
+                        tasks: false,
+                        onboarding: false,
+                        content: false,
+                        categories: false,
+                        tags: false,
+                      })
+                    }
+                    className="text-sm font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Desmarcar tudo
+                  </button>
+                </div>
+              </div>
+
+              {/* Continue button */}
+              <button
+                disabled={!Object.values(resetOptions).some(Boolean)}
+                onClick={() => {
+                  setResetStep('confirm');
+                  setConfirmText('');
+                }}
+                className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Continuar para confirmação
+              </button>
+            </>
+          )}
+
+          {resetStep === 'confirm' && (
+            <div className="rounded-xl border-2 border-red-300 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-red-800">
+                    Confirmar exclusão de dados
+                  </h2>
+                  <p className="text-sm text-red-600">
+                    Esta ação é irreversível!
+                  </p>
+                </div>
+              </div>
+
+              {/* Summary of what will be deleted */}
+              <div className="mb-6 rounded-lg bg-red-50 p-4">
+                <p className="mb-2 text-sm font-medium text-red-800">
+                  Você está prestes a apagar:
+                </p>
+                <ul className="space-y-1">
+                  {resetOptions.financial && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <DollarSign className="h-3.5 w-3.5" /> Contratos, faturas e despesas
+                    </li>
+                  )}
+                  {resetOptions.crm && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <UserCheck className="h-3.5 w-3.5" /> Deals, leads, contatos, empresas e atividades
+                    </li>
+                  )}
+                  {resetOptions.pipeline && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <Kanban className="h-3.5 w-3.5" /> Pipelines e estágios
+                    </li>
+                  )}
+                  {resetOptions.tasks && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <CheckSquare className="h-3.5 w-3.5" /> Tarefas e comentários
+                    </li>
+                  )}
+                  {resetOptions.onboarding && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <ClipboardList className="h-3.5 w-3.5" /> Onboardings e templates
+                    </li>
+                  )}
+                  {resetOptions.content && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <FileText className="h-3.5 w-3.5" /> Posts, ideias e perfis de conteúdo
+                    </li>
+                  )}
+                  {resetOptions.categories && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <FolderOpen className="h-3.5 w-3.5" /> Categorias e centros de custo
+                    </li>
+                  )}
+                  {resetOptions.tags && (
+                    <li className="flex items-center gap-2 text-sm text-red-700">
+                      <Tag className="h-3.5 w-3.5" /> Tags e associações
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              {/* Confirmation input */}
+              <div className="mb-6">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Digite <span className="font-bold text-red-600">APAGAR DADOS</span> para confirmar:
+                </label>
+                <input
+                  type="text"
+                  className={cn(inputClass, 'border-red-300 focus:border-red-500 focus:ring-red-200')}
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder="APAGAR DADOS"
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setResetStep('select')}
+                  className="flex-1 rounded-lg border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  disabled={confirmText !== 'APAGAR DADOS' || resetting}
+                  onClick={async () => {
+                    setResetting(true);
+                    try {
+                      const result = await api.resetOrganizationData(resetOptions);
+                      setResetResult(result.deleted);
+                      setResetStep('done');
+                    } catch (err: any) {
+                      alert(err.message || 'Erro ao resetar dados.');
+                    } finally {
+                      setResetting(false);
+                    }
+                  }}
+                  className="flex-1 rounded-lg bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {resetting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Apagando...
+                    </span>
+                  ) : (
+                    'Apagar dados permanentemente'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {resetStep === 'done' && resetResult && (
+            <div className="rounded-xl border border-green-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                  <CheckSquare className="h-6 w-6 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-green-800">
+                    Dados removidos com sucesso
+                  </h2>
+                  <p className="text-sm text-green-600">
+                    Os dados selecionados foram apagados permanentemente.
+                  </p>
+                </div>
+              </div>
+
+              {/* Results summary */}
+              <div className="mb-6 rounded-lg bg-gray-50 p-4">
+                <p className="mb-3 text-sm font-medium text-gray-700">Resumo da exclusão:</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {Object.entries(resetResult).map(([key, count]) => {
+                    const labels: Record<string, string> = {
+                      invoices: 'Faturas',
+                      expenses: 'Despesas',
+                      contracts: 'Contratos',
+                      expenseCategories: 'Categorias',
+                      costCenters: 'Centros de Custo',
+                      tagAssignments: 'Associações de Tags',
+                      tags: 'Tags',
+                      comments: 'Comentários',
+                      tasks: 'Tarefas',
+                      onboardingItems: 'Itens de Onboarding',
+                      onboardingSections: 'Seções de Onboarding',
+                      onboardings: 'Onboardings',
+                      templateItems: 'Itens de Template',
+                      templateSections: 'Seções de Template',
+                      onboardingTemplates: 'Templates',
+                      contentVersions: 'Versões de Conteúdo',
+                      contentPosts: 'Posts',
+                      contentIdeas: 'Ideias',
+                      contentProfiles: 'Perfis de Conteúdo',
+                      activities: 'Atividades',
+                      dealContacts: 'Contatos de Deal',
+                      deals: 'Deals',
+                      leads: 'Leads',
+                      contacts: 'Contatos',
+                      companies: 'Empresas',
+                      pipelineStages: 'Estágios de Pipeline',
+                      pipelines: 'Pipelines',
+                    };
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center justify-between rounded-md bg-white px-3 py-2 text-sm"
+                      >
+                        <span className="text-gray-600">{labels[key] || key}</span>
+                        <span className="font-semibold text-gray-900">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setResetStep('select');
+                  setResetResult(null);
+                  setConfirmText('');
+                  setResetOptions({
+                    financial: false,
+                    crm: false,
+                    pipeline: false,
+                    tasks: false,
+                    onboarding: false,
+                    content: false,
+                    categories: false,
+                    tags: false,
+                  });
+                }}
+                className={btnPrimary + ' w-full'}
+              >
+                Voltar para configurações
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -479,6 +479,19 @@ class ApiClient {
     return this.patch<any>('/organizations/me', data);
   }
 
+  resetOrganizationData(options: {
+    financial: boolean;
+    crm: boolean;
+    pipeline: boolean;
+    tasks: boolean;
+    onboarding: boolean;
+    content: boolean;
+    categories: boolean;
+    tags: boolean;
+  }) {
+    return this.post<{ message: string; deleted: Record<string, number> }>('/organizations/reset', options);
+  }
+
   inviteMember(data: any) {
     return this.post<any>('/users/invite', data);
   }
