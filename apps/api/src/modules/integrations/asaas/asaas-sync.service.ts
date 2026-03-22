@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
-import { AsaasService, AsaasCustomer, AsaasSubscription, AsaasPayment } from './asaas.service';
+import { AsaasService, AsaasCustomer, AsaasSubscription, AsaasPayment, AsaasFinancialTransaction } from './asaas.service';
 import { BillingCycle, ContractStatus, InvoiceStatus } from '@prisma/client';
 
 function mapCycle(cycle: string): BillingCycle {
@@ -64,7 +64,7 @@ export class AsaasSyncService {
     private asaasService: AsaasService,
   ) {}
 
-  async syncAll(organizationId: string): Promise<{ customers: number; subscriptions: number; payments: number }> {
+  async syncAll(organizationId: string): Promise<{ customers: number; subscriptions: number; payments: number; expenses: number }> {
     const integration = await this.prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: 'asaas' } },
     });
@@ -90,7 +90,13 @@ export class AsaasSyncService {
       const customerTotal = await this.asaasService.getCount('customers', integration.apiKey, integration.sandbox, dateFilter);
       const subscriptionTotal = await this.asaasService.getCount('subscriptions', integration.apiKey, integration.sandbox, dateFilter);
       const paymentTotal = await this.asaasService.getCount('payments', integration.apiKey, integration.sandbox, dateFilter);
-      const grandTotal = customerTotal + subscriptionTotal + paymentTotal;
+      let expenseTotal = 0;
+      try {
+        expenseTotal = await this.asaasService.getCount('financialTransactions', integration.apiKey, integration.sandbox, dateFilter);
+      } catch {
+        this.logger.warn('Could not fetch financialTransactions count, skipping expense sync');
+      }
+      const grandTotal = customerTotal + subscriptionTotal + paymentTotal + expenseTotal;
 
       let processed = 0;
 
@@ -113,6 +119,16 @@ export class AsaasSyncService {
         organizationId, integration.apiKey, integration.sandbox, dateFilter,
         grandTotal, processed, integration.id, paymentTotal,
       );
+      processed += paymentCount;
+
+      // Sync Expenses (financial transactions from Asaas)
+      let expenseCount = 0;
+      if (expenseTotal > 0) {
+        expenseCount = await this.syncExpenses(
+          organizationId, integration.apiKey, integration.sandbox, dateFilter,
+          grandTotal, processed, integration.id, expenseTotal,
+        );
+      }
 
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -122,11 +138,11 @@ export class AsaasSyncService {
           syncError: null,
           syncProgress: 100,
           syncPhase: 'done',
-          syncDetail: `Sincronização concluída: ${customerCount} clientes, ${subscriptionCount} assinaturas, ${paymentCount} cobranças`,
+          syncDetail: `Sincronização concluída: ${customerCount} clientes, ${subscriptionCount} assinaturas, ${paymentCount} cobranças, ${expenseCount} despesas`,
         },
       });
 
-      return { customers: customerCount, subscriptions: subscriptionCount, payments: paymentCount };
+      return { customers: customerCount, subscriptions: subscriptionCount, payments: paymentCount, expenses: expenseCount };
     } catch (error) {
       const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
       await this.prisma.integration.update({
@@ -141,7 +157,7 @@ export class AsaasSyncService {
         },
       });
       if (!isCancelled) throw error;
-      return { customers: 0, subscriptions: 0, payments: 0 };
+      return { customers: 0, subscriptions: 0, payments: 0, expenses: 0 };
     }
   }
 
@@ -313,6 +329,133 @@ export class AsaasSyncService {
     this.logger.log(`Synced ${count} payments for org ${organizationId}`);
     return count;
   }
+
+  // ─── Expense Sync (Asaas Financial Transactions) ─────────────────────
+
+  private readonly EXPENSE_CATEGORY_MAP: Record<string, string> = {
+    PAYMENT_FEE: 'Taxa Boleto (Asaas)',
+    PAYMENT_FEE_PIX: 'Taxa PIX (Asaas)',
+    PAYMENT_FEE_CREDIT_CARD: 'Taxa Cartão (Asaas)',
+    TRANSFER: 'Transferência Bancária (Asaas)',
+    INTERNAL_TRANSFER_DEBIT: 'Transferência Bancária (Asaas)',
+    REFUND: 'Estorno (Asaas)',
+    PARTIAL_REFUND: 'Estorno (Asaas)',
+    CHARGEBACK: 'Chargeback (Asaas)',
+    CHARGEBACK_REVERSAL: 'Chargeback (Asaas)',
+    OTHER: 'Outras Taxas (Asaas)',
+  };
+
+  private mapTransactionCategory(type: string, description?: string): string {
+    if (type === 'PAYMENT_FEE' && description) {
+      const lower = description.toLowerCase();
+      if (lower.includes('pix')) return this.EXPENSE_CATEGORY_MAP.PAYMENT_FEE_PIX;
+      if (lower.includes('cartão') || lower.includes('credit') || lower.includes('crédito'))
+        return this.EXPENSE_CATEGORY_MAP.PAYMENT_FEE_CREDIT_CARD;
+      return this.EXPENSE_CATEGORY_MAP.PAYMENT_FEE;
+    }
+    return this.EXPENSE_CATEGORY_MAP[type] || this.EXPENSE_CATEGORY_MAP.OTHER;
+  }
+
+  private categoryCache = new Map<string, string>();
+
+  private async getOrCreateExpenseCategory(organizationId: string, name: string): Promise<string> {
+    const cacheKey = `${organizationId}:${name}`;
+    if (this.categoryCache.has(cacheKey)) return this.categoryCache.get(cacheKey)!;
+
+    let category = await this.prisma.expenseCategory.findFirst({
+      where: { organizationId, name },
+    });
+    if (!category) {
+      category = await this.prisma.expenseCategory.create({
+        data: { organizationId, name },
+      });
+    }
+    this.categoryCache.set(cacheKey, category.id);
+    return category.id;
+  }
+
+  private async getSystemUserId(organizationId: string): Promise<string> {
+    const member = await this.prisma.organizationMember.findFirst({
+      where: { organizationId, role: 'OWNER' },
+      select: { userId: true },
+    });
+    if (member) return member.userId;
+
+    const anyMember = await this.prisma.organizationMember.findFirst({
+      where: { organizationId },
+      select: { userId: true },
+    });
+    if (!anyMember) throw new Error('Nenhum membro encontrado na organização para criar despesas');
+    return anyMember.userId;
+  }
+
+  private isOutgoingTransaction(transaction: AsaasFinancialTransaction): boolean {
+    return transaction.value < 0;
+  }
+
+  private async syncExpenses(
+    organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
+    grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
+  ): Promise<number> {
+    let count = 0;
+    const createdById = await this.getSystemUserId(organizationId);
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'expenses', `Sincronizando despesas (0/${phaseTotal})...`);
+
+    for await (const batch of this.asaasService.fetchAllFinancialTransactions(apiKey, sandbox, dateFilter)) {
+      await this.checkCancelled(integrationId);
+      for (const transaction of batch) {
+        if (!this.isOutgoingTransaction(transaction)) continue;
+        await this.upsertExpense(organizationId, transaction, createdById);
+        count++;
+      }
+      await this.updateProgress(
+        integrationId,
+        this.calcProgress(processedBefore + count, grandTotal),
+        'expenses',
+        `Sincronizando despesas (${count}/${phaseTotal})...`,
+      );
+    }
+    this.categoryCache.clear();
+    this.logger.log(`Synced ${count} expenses for org ${organizationId}`);
+    return count;
+  }
+
+  private async upsertExpense(organizationId: string, transaction: AsaasFinancialTransaction, createdById: string) {
+    const existing = await this.prisma.expense.findUnique({
+      where: { asaasTransactionId: transaction.id },
+    });
+
+    const categoryName = this.mapTransactionCategory(transaction.type, transaction.description);
+    const categoryId = await this.getOrCreateExpenseCategory(organizationId, categoryName);
+    const absValue = Math.abs(transaction.value);
+    const transactionDate = new Date(transaction.date);
+
+    const data = {
+      title: transaction.description || `${categoryName} - ${transaction.id}`,
+      value: absValue,
+      status: 'PAID' as const,
+      type: 'VARIABLE' as const,
+      dueDate: transactionDate,
+      paidAt: transactionDate,
+      supplier: 'Asaas',
+      categoryId,
+      asaasTransactionId: transaction.id,
+      notes: transaction.paymentId ? `Ref. cobrança: ${transaction.paymentId}` : undefined,
+    };
+
+    if (existing) {
+      await this.prisma.expense.update({
+        where: { id: existing.id },
+        data,
+      });
+    } else {
+      await this.prisma.expense.create({
+        data: { ...data, organizationId, createdById },
+      });
+    }
+  }
+
+  // ─── Invoice Sync ───────────────────────────────────────────────────
 
   private async upsertInvoice(organizationId: string, payment: AsaasPayment) {
     const company = await this.prisma.company.findFirst({

@@ -841,8 +841,9 @@ model Expense {
   recurrence     BillingCycle?
   supplier       String?
   invoiceNumber  String?
-  attachmentUrl  String?
-  notes          String?
+  attachmentUrl       String?
+  notes               String?
+  asaasTransactionId  String?   @unique
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

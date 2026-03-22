@@ -48,6 +48,16 @@ export interface AsaasPayment {
   pixTransaction?: { qrCode?: string };
 }
 
+export interface AsaasFinancialTransaction {
+  id: string;
+  value: number;
+  type: string;
+  date: string;
+  description?: string;
+  paymentId?: string;
+  balance: number;
+}
+
 interface AsaasListResponse<T> {
   object: string;
   hasMore: boolean;
@@ -103,7 +113,7 @@ export class AsaasService {
   }
 
   async getCount(
-    endpoint: 'customers' | 'subscriptions' | 'payments',
+    endpoint: 'customers' | 'subscriptions' | 'payments' | 'financialTransactions',
     apiKey: string,
     sandbox: boolean,
     dateCreatedAfter?: string,
@@ -171,6 +181,27 @@ export class AsaasService {
     while (hasMore) {
       const res = await this.httpGet<AsaasListResponse<AsaasPayment>>(
         `/payments?offset=${offset}&limit=${limit}${dateFilter}`,
+        apiKey,
+        sandbox,
+      );
+      if (res.data.length > 0) yield res.data;
+      hasMore = res.hasMore;
+      offset += limit;
+    }
+  }
+
+  async *fetchAllFinancialTransactions(
+    apiKey: string,
+    sandbox: boolean,
+    dateCreatedAfter?: string,
+  ): AsyncGenerator<AsaasFinancialTransaction[]> {
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
+    const dateFilter = this.buildDateFilter(dateCreatedAfter);
+    while (hasMore) {
+      const res = await this.httpGet<AsaasListResponse<AsaasFinancialTransaction>>(
+        `/financialTransactions?offset=${offset}&limit=${limit}${dateFilter}`,
         apiKey,
         sandbox,
       );
