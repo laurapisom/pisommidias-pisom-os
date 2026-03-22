@@ -437,6 +437,14 @@ class ApiClient {
     return this.delete<any>(`/users/team/${memberId}`);
   }
 
+  updateMemberPermissions(memberId: string, modulePermissions: Record<string, boolean>) {
+    return this.patch<any>(`/users/team/${memberId}/permissions`, { modulePermissions });
+  }
+
+  toggleMemberActive(memberId: string, isActive: boolean) {
+    return this.patch<any>(`/users/team/${memberId}/active`, { isActive });
+  }
+
   // Integrations
   getAsaasIntegration() {
     return this.get<any>('/integrations/asaas');

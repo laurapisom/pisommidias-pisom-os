@@ -24,6 +24,7 @@ import {
   Landmark,
   ListOrdered,
   FileBarChart,
+  UsersRound,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -56,6 +57,7 @@ const navItems = [
       { label: 'Fluxo de Caixa', href: '/financial/cashflow', icon: TrendingUp },
     ],
   },
+  { label: 'Colaboradores', href: '/collaborators', icon: UsersRound },
 ];
 
 export function Sidebar() {

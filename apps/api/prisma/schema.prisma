@@ -111,6 +111,7 @@ model OrganizationMember {
   organizationId String
   userId         String
   role           OrgRole  @default(MEMBER)
+  modulePermissions Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
