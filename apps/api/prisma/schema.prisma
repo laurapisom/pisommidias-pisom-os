@@ -54,6 +54,10 @@ model Integration {
   lastSyncAt     DateTime?
   syncStatus     String?
   syncError      String?
+  syncProgress   Int?
+  syncPhase      String?
+  syncDetail     String?
+  syncCancelled  Boolean   @default(false)
   settings       Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

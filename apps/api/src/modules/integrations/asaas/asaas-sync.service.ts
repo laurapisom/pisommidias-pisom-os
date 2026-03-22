@@ -75,36 +75,114 @@ export class AsaasSyncService {
 
     await this.prisma.integration.update({
       where: { id: integration.id },
-      data: { syncStatus: 'syncing', syncError: null },
+      data: { syncStatus: 'syncing', syncError: null, syncCancelled: false, syncProgress: 0, syncPhase: null, syncDetail: 'Iniciando sincronização...' },
     });
 
     try {
-      const customerCount = await this.syncCustomers(organizationId, integration.apiKey, integration.sandbox);
-      const subscriptionCount = await this.syncSubscriptions(organizationId, integration.apiKey, integration.sandbox);
-      const paymentCount = await this.syncPayments(organizationId, integration.apiKey, integration.sandbox);
+      // Sync incremental: usa lastSyncAt para filtrar apenas dados novos/atualizados
+      const dateFilter = integration.lastSyncAt
+        ? integration.lastSyncAt.toISOString().split('T')[0]
+        : undefined;
+
+      // Obter contagens totais para calcular progresso
+      await this.updateProgress(integration.id, 0, 'counting', 'Calculando total de registros...');
+
+      const customerTotal = await this.asaasService.getCount('customers', integration.apiKey, integration.sandbox, dateFilter);
+      const subscriptionTotal = await this.asaasService.getCount('subscriptions', integration.apiKey, integration.sandbox, dateFilter);
+      const paymentTotal = await this.asaasService.getCount('payments', integration.apiKey, integration.sandbox, dateFilter);
+      const grandTotal = customerTotal + subscriptionTotal + paymentTotal;
+
+      let processed = 0;
+
+      // Sync Customers
+      const customerCount = await this.syncCustomers(
+        organizationId, integration.apiKey, integration.sandbox, dateFilter,
+        grandTotal, processed, integration.id, customerTotal,
+      );
+      processed += customerCount;
+
+      // Sync Subscriptions
+      const subscriptionCount = await this.syncSubscriptions(
+        organizationId, integration.apiKey, integration.sandbox, dateFilter,
+        grandTotal, processed, integration.id, subscriptionTotal,
+      );
+      processed += subscriptionCount;
+
+      // Sync Payments
+      const paymentCount = await this.syncPayments(
+        organizationId, integration.apiKey, integration.sandbox, dateFilter,
+        grandTotal, processed, integration.id, paymentTotal,
+      );
 
       await this.prisma.integration.update({
         where: { id: integration.id },
-        data: { syncStatus: 'success', lastSyncAt: new Date(), syncError: null },
+        data: {
+          syncStatus: 'success',
+          lastSyncAt: new Date(),
+          syncError: null,
+          syncProgress: 100,
+          syncPhase: 'done',
+          syncDetail: `Sincronização concluída: ${customerCount} clientes, ${subscriptionCount} assinaturas, ${paymentCount} cobranças`,
+        },
       });
 
       return { customers: customerCount, subscriptions: subscriptionCount, payments: paymentCount };
     } catch (error) {
+      const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
       await this.prisma.integration.update({
         where: { id: integration.id },
-        data: { syncStatus: 'error', syncError: error.message },
+        data: {
+          syncStatus: isCancelled ? 'cancelled' : 'error',
+          syncError: isCancelled ? null : error.message,
+          syncProgress: null,
+          syncPhase: null,
+          syncDetail: null,
+          syncCancelled: false,
+        },
       });
-      throw error;
+      if (!isCancelled) throw error;
+      return { customers: 0, subscriptions: 0, payments: 0 };
     }
   }
 
-  private async syncCustomers(organizationId: string, apiKey: string, sandbox: boolean): Promise<number> {
+  private async checkCancelled(integrationId: string): Promise<void> {
+    const integration = await this.prisma.integration.findUnique({ where: { id: integrationId } });
+    if (integration?.syncCancelled) {
+      throw new Error('Sincronização cancelada pelo usuário');
+    }
+  }
+
+  private async updateProgress(integrationId: string, progress: number, phase: string, detail: string) {
+    await this.prisma.integration.update({
+      where: { id: integrationId },
+      data: { syncProgress: progress, syncPhase: phase, syncDetail: detail },
+    });
+  }
+
+  private calcProgress(processed: number, grandTotal: number): number {
+    if (grandTotal === 0) return 100;
+    return Math.min(Math.round((processed / grandTotal) * 100), 99);
+  }
+
+  private async syncCustomers(
+    organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
+    grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
+  ): Promise<number> {
     let count = 0;
-    for await (const batch of this.asaasService.fetchAllCustomers(apiKey, sandbox)) {
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'customers', `Sincronizando clientes (0/${phaseTotal})...`);
+
+    for await (const batch of this.asaasService.fetchAllCustomers(apiKey, sandbox, dateFilter)) {
+      await this.checkCancelled(integrationId);
       for (const customer of batch) {
         await this.upsertCompany(organizationId, customer);
         count++;
       }
+      await this.updateProgress(
+        integrationId,
+        this.calcProgress(processedBefore + count, grandTotal),
+        'customers',
+        `Sincronizando clientes (${count}/${phaseTotal})...`,
+      );
     }
     this.logger.log(`Synced ${count} customers for org ${organizationId}`);
     return count;
@@ -154,13 +232,25 @@ export class AsaasSyncService {
     }
   }
 
-  private async syncSubscriptions(organizationId: string, apiKey: string, sandbox: boolean): Promise<number> {
+  private async syncSubscriptions(
+    organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
+    grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
+  ): Promise<number> {
     let count = 0;
-    for await (const batch of this.asaasService.fetchAllSubscriptions(apiKey, sandbox)) {
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'subscriptions', `Sincronizando assinaturas (0/${phaseTotal})...`);
+
+    for await (const batch of this.asaasService.fetchAllSubscriptions(apiKey, sandbox, dateFilter)) {
+      await this.checkCancelled(integrationId);
       for (const sub of batch) {
         await this.upsertContract(organizationId, sub);
         count++;
       }
+      await this.updateProgress(
+        integrationId,
+        this.calcProgress(processedBefore + count, grandTotal),
+        'subscriptions',
+        `Sincronizando assinaturas (${count}/${phaseTotal})...`,
+      );
     }
     this.logger.log(`Synced ${count} subscriptions for org ${organizationId}`);
     return count;
@@ -200,13 +290,25 @@ export class AsaasSyncService {
     }
   }
 
-  private async syncPayments(organizationId: string, apiKey: string, sandbox: boolean): Promise<number> {
+  private async syncPayments(
+    organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
+    grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
+  ): Promise<number> {
     let count = 0;
-    for await (const batch of this.asaasService.fetchAllPayments(apiKey, sandbox)) {
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'payments', `Sincronizando cobranças (0/${phaseTotal})...`);
+
+    for await (const batch of this.asaasService.fetchAllPayments(apiKey, sandbox, dateFilter)) {
+      await this.checkCancelled(integrationId);
       for (const payment of batch) {
         await this.upsertInvoice(organizationId, payment);
         count++;
       }
+      await this.updateProgress(
+        integrationId,
+        this.calcProgress(processedBefore + count, grandTotal),
+        'payments',
+        `Sincronizando cobranças (${count}/${phaseTotal})...`,
+      );
     }
     this.logger.log(`Synced ${count} payments for org ${organizationId}`);
     return count;

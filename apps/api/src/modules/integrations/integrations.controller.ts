@@ -45,6 +45,12 @@ export class IntegrationsController {
     return this.integrationsService.triggerSync(user.organizationId);
   }
 
+  @Post('asaas/sync/cancel')
+  @ApiOperation({ summary: 'Cancel Asaas sync' })
+  cancelSync(@CurrentUser() user: any) {
+    return this.integrationsService.cancelSync(user.organizationId);
+  }
+
   @Get('asaas/status')
   @ApiOperation({ summary: 'Get Asaas sync status' })
   getSyncStatus(@CurrentUser() user: any) {

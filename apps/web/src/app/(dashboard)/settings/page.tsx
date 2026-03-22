@@ -133,6 +133,9 @@ export default function SettingsPage() {
   const [asaasSyncError, setAsaasSyncError] = useState<string | null>(null);
   const [asaasShowKey, setAsaasShowKey] = useState(false);
   const [asaasLoaded, setAsaasLoaded] = useState(false);
+  const [asaasSyncProgress, setAsaasSyncProgress] = useState<number>(0);
+  const [asaasSyncDetail, setAsaasSyncDetail] = useState<string>('');
+  const [asaasKeyMasked, setAsaasKeyMasked] = useState(false);
 
   // Load Asaas integration settings when tab is activated
   useEffect(() => {
@@ -145,11 +148,14 @@ export default function SettingsPage() {
         ]);
         if (settings) {
           setAsaasApiKey(settings.apiKey || '');
+          setAsaasKeyMasked(settings.apiKey?.startsWith('****') ?? false);
           setAsaasSandbox(settings.sandbox ?? true);
         }
         setAsaasSyncStatus(status.syncStatus);
         setAsaasLastSync(status.lastSyncAt);
         setAsaasSyncError(status.syncError);
+        setAsaasSyncProgress(status.syncProgress || 0);
+        setAsaasSyncDetail(status.syncDetail || '');
       } catch {
         // no integration configured yet
       }
@@ -830,8 +836,15 @@ export default function SettingsPage() {
                     className={inputClass}
                     placeholder="Insira sua API Key do Asaas"
                     value={asaasApiKey}
+                    onFocus={() => {
+                      if (asaasKeyMasked) {
+                        setAsaasApiKey('');
+                        setAsaasKeyMasked(false);
+                      }
+                    }}
                     onChange={(e) => {
                       setAsaasApiKey(e.target.value);
+                      setAsaasKeyMasked(false);
                       setAsaasTestResult(null);
                     }}
                   />
@@ -944,12 +957,13 @@ export default function SettingsPage() {
                     asaasSyncStatus === 'success' && 'bg-green-100 text-green-700',
                     asaasSyncStatus === 'syncing' && 'bg-blue-100 text-blue-700',
                     asaasSyncStatus === 'error' && 'bg-red-100 text-red-700',
+                    asaasSyncStatus === 'cancelled' && 'bg-orange-100 text-orange-700',
                     asaasSyncStatus === 'idle' && 'bg-gray-100 text-gray-700',
                   )}>
                     {asaasSyncStatus === 'syncing' && <Loader2 className="h-3 w-3 animate-spin" />}
                     {asaasSyncStatus === 'success' && <CheckCircle2 className="h-3 w-3" />}
-                    {asaasSyncStatus === 'error' && <XCircle className="h-3 w-3" />}
-                    {asaasSyncStatus === 'success' ? 'Sincronizado' : asaasSyncStatus === 'syncing' ? 'Sincronizando...' : asaasSyncStatus === 'error' ? 'Erro' : 'Aguardando'}
+                    {(asaasSyncStatus === 'error' || asaasSyncStatus === 'cancelled') && <XCircle className="h-3 w-3" />}
+                    {asaasSyncStatus === 'success' ? 'Sincronizado' : asaasSyncStatus === 'syncing' ? 'Sincronizando...' : asaasSyncStatus === 'error' ? 'Erro' : asaasSyncStatus === 'cancelled' ? 'Cancelado' : 'Aguardando'}
                   </span>
                 )}
                 {asaasLastSync && (
@@ -965,40 +979,77 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <button
-                className={cn(btnPrimary, 'flex items-center gap-2')}
-                disabled={asaasSyncing || asaasSyncStatus === 'syncing'}
-                onClick={async () => {
-                  setAsaasSyncing(true);
-                  setAsaasSyncError(null);
-                  try {
-                    await api.triggerAsaasSync();
-                    setAsaasSyncStatus('syncing');
-                    // Poll for status
-                    const poll = setInterval(async () => {
-                      try {
-                        const status = await api.getAsaasSyncStatus();
-                        setAsaasSyncStatus(status.syncStatus);
-                        setAsaasLastSync(status.lastSyncAt);
-                        setAsaasSyncError(status.syncError);
-                        if (status.syncStatus !== 'syncing') {
+              {asaasSyncStatus === 'syncing' && (
+                <div className="space-y-2">
+                  <div className="h-2.5 w-full rounded-full bg-gray-200">
+                    <div
+                      className="h-2.5 rounded-full bg-blue-600 transition-all duration-500"
+                      style={{ width: `${asaasSyncProgress}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-gray-500">
+                    <span>{asaasSyncDetail || 'Iniciando sincronização...'}</span>
+                    <span>{asaasSyncProgress}%</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <button
+                  className={cn(btnPrimary, 'flex items-center gap-2')}
+                  disabled={asaasSyncing || asaasSyncStatus === 'syncing'}
+                  onClick={async () => {
+                    setAsaasSyncing(true);
+                    setAsaasSyncError(null);
+                    setAsaasSyncProgress(0);
+                    setAsaasSyncDetail('');
+                    try {
+                      await api.triggerAsaasSync();
+                      setAsaasSyncStatus('syncing');
+                      // Poll for status
+                      const poll = setInterval(async () => {
+                        try {
+                          const status = await api.getAsaasSyncStatus();
+                          setAsaasSyncStatus(status.syncStatus);
+                          setAsaasLastSync(status.lastSyncAt);
+                          setAsaasSyncError(status.syncError);
+                          setAsaasSyncProgress(status.syncProgress || 0);
+                          setAsaasSyncDetail(status.syncDetail || '');
+                          if (status.syncStatus !== 'syncing') {
+                            clearInterval(poll);
+                            setAsaasSyncing(false);
+                          }
+                        } catch {
                           clearInterval(poll);
                           setAsaasSyncing(false);
                         }
+                      }, 3000);
+                    } catch (err: any) {
+                      setAsaasSyncError(err.message || 'Erro ao iniciar sincronização.');
+                      setAsaasSyncing(false);
+                    }
+                  }}
+                >
+                  <RefreshCw className={cn('h-4 w-4', asaasSyncing && 'animate-spin')} />
+                  {asaasSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+                </button>
+
+                {asaasSyncStatus === 'syncing' && (
+                  <button
+                    className="flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                    onClick={async () => {
+                      try {
+                        await api.cancelAsaasSync();
                       } catch {
-                        clearInterval(poll);
-                        setAsaasSyncing(false);
+                        // cancellation request failed
                       }
-                    }, 3000);
-                  } catch (err: any) {
-                    setAsaasSyncError(err.message || 'Erro ao iniciar sincronização.');
-                    setAsaasSyncing(false);
-                  }
-                }}
-              >
-                <RefreshCw className={cn('h-4 w-4', asaasSyncing && 'animate-spin')} />
-                {asaasSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
-              </button>
+                    }}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Cancelar
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

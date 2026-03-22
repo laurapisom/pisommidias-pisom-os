@@ -30,6 +30,11 @@ export class IntegrationsService {
     organizationId: string,
     data: { apiKey: string; sandbox: boolean },
   ) {
+    const updateData: Record<string, any> = { sandbox: data.sandbox };
+    if (!data.apiKey.startsWith('****')) {
+      updateData.apiKey = data.apiKey;
+    }
+
     return this.prisma.integration.upsert({
       where: { organizationId_provider: { organizationId, provider: 'asaas' } },
       create: {
@@ -40,10 +45,7 @@ export class IntegrationsService {
         isActive: true,
         syncStatus: 'idle',
       },
-      update: {
-        apiKey: data.apiKey,
-        sandbox: data.sandbox,
-      },
+      update: updateData,
     });
   }
 
@@ -88,6 +90,27 @@ export class IntegrationsService {
     return { message: 'Sincronização iniciada' };
   }
 
+  async cancelSync(organizationId: string) {
+    const integration = await this.prisma.integration.findUnique({
+      where: { organizationId_provider: { organizationId, provider: 'asaas' } },
+    });
+
+    if (!integration) {
+      throw new NotFoundException('Integração Asaas não configurada');
+    }
+
+    if (integration.syncStatus !== 'syncing') {
+      throw new BadRequestException('Nenhuma sincronização em andamento');
+    }
+
+    await this.prisma.integration.update({
+      where: { id: integration.id },
+      data: { syncCancelled: true },
+    });
+
+    return { message: 'Cancelamento solicitado' };
+  }
+
   async getSyncStatus(organizationId: string) {
     const integration = await this.prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: 'asaas' } },
@@ -101,6 +124,9 @@ export class IntegrationsService {
       syncStatus: integration.syncStatus,
       lastSyncAt: integration.lastSyncAt,
       syncError: integration.syncError,
+      syncProgress: integration.syncProgress,
+      syncPhase: integration.syncPhase,
+      syncDetail: integration.syncDetail,
     };
   }
 

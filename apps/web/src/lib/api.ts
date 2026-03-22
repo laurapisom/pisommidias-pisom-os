@@ -533,8 +533,19 @@ class ApiClient {
     return this.post<{ message: string }>('/integrations/asaas/sync');
   }
 
+  cancelAsaasSync() {
+    return this.post<{ message: string }>('/integrations/asaas/sync/cancel');
+  }
+
   getAsaasSyncStatus() {
-    return this.get<{ syncStatus: string | null; lastSyncAt: string | null; syncError: string | null }>('/integrations/asaas/status');
+    return this.get<{
+      syncStatus: string | null;
+      lastSyncAt: string | null;
+      syncError: string | null;
+      syncProgress: number | null;
+      syncPhase: string | null;
+      syncDetail: string | null;
+    }>('/integrations/asaas/status');
   }
 
   deleteAsaasIntegration() {

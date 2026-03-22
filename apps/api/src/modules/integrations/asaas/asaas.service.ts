@@ -83,6 +83,11 @@ export class AsaasService {
     return res.json();
   }
 
+  private buildDateFilter(dateCreatedAfter?: string): string {
+    if (!dateCreatedAfter) return '';
+    return `&dateCreated[ge]=${dateCreatedAfter}`;
+  }
+
   async testConnection(apiKey: string, sandbox: boolean): Promise<boolean> {
     try {
       await this.httpGet<AsaasListResponse<AsaasCustomer>>(
@@ -97,16 +102,33 @@ export class AsaasService {
     }
   }
 
+  async getCount(
+    endpoint: 'customers' | 'subscriptions' | 'payments',
+    apiKey: string,
+    sandbox: boolean,
+    dateCreatedAfter?: string,
+  ): Promise<number> {
+    const dateFilter = this.buildDateFilter(dateCreatedAfter);
+    const res = await this.httpGet<AsaasListResponse<unknown>>(
+      `/${endpoint}?limit=1${dateFilter}`,
+      apiKey,
+      sandbox,
+    );
+    return res.totalCount;
+  }
+
   async *fetchAllCustomers(
     apiKey: string,
     sandbox: boolean,
+    dateCreatedAfter?: string,
   ): AsyncGenerator<AsaasCustomer[]> {
     let offset = 0;
     const limit = 100;
     let hasMore = true;
+    const dateFilter = this.buildDateFilter(dateCreatedAfter);
     while (hasMore) {
       const res = await this.httpGet<AsaasListResponse<AsaasCustomer>>(
-        `/customers?offset=${offset}&limit=${limit}`,
+        `/customers?offset=${offset}&limit=${limit}${dateFilter}`,
         apiKey,
         sandbox,
       );
@@ -119,13 +141,15 @@ export class AsaasService {
   async *fetchAllSubscriptions(
     apiKey: string,
     sandbox: boolean,
+    dateCreatedAfter?: string,
   ): AsyncGenerator<AsaasSubscription[]> {
     let offset = 0;
     const limit = 100;
     let hasMore = true;
+    const dateFilter = this.buildDateFilter(dateCreatedAfter);
     while (hasMore) {
       const res = await this.httpGet<AsaasListResponse<AsaasSubscription>>(
-        `/subscriptions?offset=${offset}&limit=${limit}`,
+        `/subscriptions?offset=${offset}&limit=${limit}${dateFilter}`,
         apiKey,
         sandbox,
       );
@@ -138,13 +162,15 @@ export class AsaasService {
   async *fetchAllPayments(
     apiKey: string,
     sandbox: boolean,
+    dateCreatedAfter?: string,
   ): AsyncGenerator<AsaasPayment[]> {
     let offset = 0;
     const limit = 100;
     let hasMore = true;
+    const dateFilter = this.buildDateFilter(dateCreatedAfter);
     while (hasMore) {
       const res = await this.httpGet<AsaasListResponse<AsaasPayment>>(
-        `/payments?offset=${offset}&limit=${limit}`,
+        `/payments?offset=${offset}&limit=${limit}${dateFilter}`,
         apiKey,
         sandbox,
       );
