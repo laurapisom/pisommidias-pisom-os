@@ -281,6 +281,10 @@ class ApiClient {
     return this.patch<any>(`/financial/contracts/${id}/cancel`, { reason });
   }
 
+  deleteContract(id: string) {
+    return this.delete<any>(`/financial/contracts/${id}`);
+  }
+
   getMRR() {
     return this.get<any>('/financial/contracts/mrr');
   }
@@ -313,6 +317,10 @@ class ApiClient {
 
   cancelInvoice(id: string) {
     return this.patch<any>(`/financial/invoices/${id}/cancel`, {});
+  }
+
+  deleteInvoice(id: string) {
+    return this.delete<any>(`/financial/invoices/${id}`);
   }
 
   getInvoiceSummary(month?: string) {
@@ -348,6 +356,10 @@ class ApiClient {
 
   rejectExpense(id: string) {
     return this.patch<any>(`/financial/expenses/${id}/reject`, {});
+  }
+
+  deleteExpense(id: string) {
+    return this.delete<any>(`/financial/expenses/${id}`);
   }
 
   getExpenseSummary(month?: string) {
@@ -502,6 +514,31 @@ class ApiClient {
 
   removeMember(memberId: string) {
     return this.delete<any>(`/users/team/${memberId}`);
+  }
+
+  // Integrations
+  getAsaasIntegration() {
+    return this.get<any>('/integrations/asaas');
+  }
+
+  saveAsaasIntegration(data: { apiKey: string; sandbox: boolean }) {
+    return this.post<any>('/integrations/asaas', data);
+  }
+
+  testAsaasConnection() {
+    return this.post<{ success: boolean; message: string }>('/integrations/asaas/test');
+  }
+
+  triggerAsaasSync() {
+    return this.post<{ message: string }>('/integrations/asaas/sync');
+  }
+
+  getAsaasSyncStatus() {
+    return this.get<{ syncStatus: string | null; lastSyncAt: string | null; syncError: string | null }>('/integrations/asaas/status');
+  }
+
+  deleteAsaasIntegration() {
+    return this.delete<any>('/integrations/asaas');
   }
 }
 

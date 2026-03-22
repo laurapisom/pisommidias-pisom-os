@@ -273,6 +273,15 @@ export class InvoicesService {
     return { generated: created.length, invoices: created };
   }
 
+  async remove(organizationId: string, id: string) {
+    const invoice = await this.ensureExists(organizationId, id);
+    if (invoice.status === 'PAID') {
+      throw new NotFoundException('Faturas pagas não podem ser excluídas. Cancele primeiro.');
+    }
+    await this.prisma.invoice.delete({ where: { id } });
+    return { message: 'Fatura excluída com sucesso' };
+  }
+
   private async ensureExists(organizationId: string, id: string) {
     const invoice = await this.prisma.invoice.findFirst({ where: { id, organizationId } });
     if (!invoice) throw new NotFoundException('Fatura não encontrada');

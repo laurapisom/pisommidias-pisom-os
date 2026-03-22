@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -58,5 +58,11 @@ export class ContractsController {
   @ApiOperation({ summary: 'Cancelar contrato' })
   cancel(@CurrentUser() user: any, @Param('id') id: string, @Body() body: { reason?: string }) {
     return this.contractsService.cancel(user.organizationId, id, body.reason);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Excluir contrato e suas faturas' })
+  remove(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.contractsService.remove(user.organizationId, id);
   }
 }

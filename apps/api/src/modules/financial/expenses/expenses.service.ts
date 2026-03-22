@@ -220,6 +220,12 @@ export class ExpensesService {
     });
   }
 
+  async remove(organizationId: string, id: string) {
+    await this.ensureExists(organizationId, id);
+    await this.prisma.expense.delete({ where: { id } });
+    return { message: 'Despesa excluída com sucesso' };
+  }
+
   private async ensureExists(organizationId: string, id: string) {
     const expense = await this.prisma.expense.findFirst({ where: { id, organizationId } });
     if (!expense) throw new NotFoundException('Despesa não encontrada');

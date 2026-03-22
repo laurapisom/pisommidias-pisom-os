@@ -26,12 +26,20 @@ import {
   ImageIcon,
   X,
   Palette,
+  Puzzle,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from 'lucide-react';
 
 const TABS = [
   { key: 'perfil', label: 'Perfil', icon: User },
   { key: 'organizacao', label: 'Organização', icon: Building2 },
   { key: 'equipe', label: 'Equipe', icon: Users },
+  { key: 'integracoes', label: 'Integrações', icon: Puzzle },
   { key: 'resetar', label: 'Resetar Dados', icon: RotateCcw },
 ] as const;
 
@@ -111,6 +119,43 @@ export default function SettingsPage() {
   const [resetProgress, setResetProgress] = useState(0);
   const [resetCurrentLabel, setResetCurrentLabel] = useState('');
   const [resetError, setResetError] = useState('');
+
+  // Integrations state
+  const [asaasApiKey, setAsaasApiKey] = useState('');
+  const [asaasSandbox, setAsaasSandbox] = useState(true);
+  const [asaasSaving, setAsaasSaving] = useState(false);
+  const [asaasMsg, setAsaasMsg] = useState('');
+  const [asaasTesting, setAsaasTesting] = useState(false);
+  const [asaasTestResult, setAsaasTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [asaasSyncing, setAsaasSyncing] = useState(false);
+  const [asaasSyncStatus, setAsaasSyncStatus] = useState<string | null>(null);
+  const [asaasLastSync, setAsaasLastSync] = useState<string | null>(null);
+  const [asaasSyncError, setAsaasSyncError] = useState<string | null>(null);
+  const [asaasShowKey, setAsaasShowKey] = useState(false);
+  const [asaasLoaded, setAsaasLoaded] = useState(false);
+
+  // Load Asaas integration settings when tab is activated
+  useEffect(() => {
+    if (activeTab !== 'integracoes' || asaasLoaded) return;
+    (async () => {
+      try {
+        const [settings, status] = await Promise.all([
+          api.getAsaasIntegration(),
+          api.getAsaasSyncStatus(),
+        ]);
+        if (settings) {
+          setAsaasApiKey(settings.apiKey || '');
+          setAsaasSandbox(settings.sandbox ?? true);
+        }
+        setAsaasSyncStatus(status.syncStatus);
+        setAsaasLastSync(status.lastSyncAt);
+        setAsaasSyncError(status.syncError);
+      } catch {
+        // no integration configured yet
+      }
+      setAsaasLoaded(true);
+    })();
+  }, [activeTab, asaasLoaded]);
 
   const RESET_LABELS: Record<string, string> = {
     financial: 'Apagando dados financeiros...',
@@ -753,6 +798,207 @@ export default function SettingsPage() {
                   Nenhum membro encontrado.
                 </p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'integracoes' && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
+                <DollarSign className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Asaas</h2>
+                <p className="text-sm text-gray-500">
+                  Sincronize clientes, assinaturas e cobranças do Asaas
+                </p>
+              </div>
+            </div>
+
+            {/* API Key */}
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  API Key
+                </label>
+                <div className="relative">
+                  <input
+                    type={asaasShowKey ? 'text' : 'password'}
+                    className={inputClass}
+                    placeholder="Insira sua API Key do Asaas"
+                    value={asaasApiKey}
+                    onChange={(e) => {
+                      setAsaasApiKey(e.target.value);
+                      setAsaasTestResult(null);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAsaasShowKey(!asaasShowKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {asaasShowKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Sandbox toggle */}
+              <div className="flex items-center gap-3">
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    checked={asaasSandbox}
+                    onChange={(e) => setAsaasSandbox(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <div className="peer h-5 w-9 rounded-full bg-gray-300 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-pisom-600 peer-checked:after:translate-x-full peer-checked:after:border-white" />
+                </label>
+                <span className="text-sm text-gray-700">
+                  Modo Sandbox {asaasSandbox ? '(ativo)' : '(produção)'}
+                </span>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  className={btnPrimary}
+                  disabled={asaasSaving || !asaasApiKey}
+                  onClick={async () => {
+                    setAsaasSaving(true);
+                    setAsaasMsg('');
+                    try {
+                      await api.saveAsaasIntegration({ apiKey: asaasApiKey, sandbox: asaasSandbox });
+                      setAsaasMsg('Configuração salva com sucesso.');
+                    } catch (err: any) {
+                      setAsaasMsg(err.message || 'Erro ao salvar.');
+                    } finally {
+                      setAsaasSaving(false);
+                    }
+                  }}
+                >
+                  {asaasSaving ? 'Salvando...' : 'Salvar'}
+                </button>
+
+                <button
+                  className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  disabled={asaasTesting || !asaasApiKey}
+                  onClick={async () => {
+                    setAsaasTesting(true);
+                    setAsaasTestResult(null);
+                    try {
+                      const result = await api.testAsaasConnection();
+                      setAsaasTestResult(result);
+                    } catch (err: any) {
+                      setAsaasTestResult({ success: false, message: err.message || 'Erro ao testar conexão.' });
+                    } finally {
+                      setAsaasTesting(false);
+                    }
+                  }}
+                >
+                  {asaasTesting ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Testando...
+                    </span>
+                  ) : (
+                    'Testar Conexão'
+                  )}
+                </button>
+              </div>
+
+              {/* Messages */}
+              {asaasMsg && (
+                <p className="text-sm text-gray-600">{asaasMsg}</p>
+              )}
+              {asaasTestResult && (
+                <div className={cn(
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
+                  asaasTestResult.success
+                    ? 'bg-green-50 text-green-700'
+                    : 'bg-red-50 text-red-700',
+                )}>
+                  {asaasTestResult.success ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  {asaasTestResult.message}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sync Section */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Sincronização</h3>
+
+            <div className="space-y-4">
+              {/* Sync status */}
+              <div className="flex flex-wrap items-center gap-3">
+                {asaasSyncStatus && (
+                  <span className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+                    asaasSyncStatus === 'success' && 'bg-green-100 text-green-700',
+                    asaasSyncStatus === 'syncing' && 'bg-blue-100 text-blue-700',
+                    asaasSyncStatus === 'error' && 'bg-red-100 text-red-700',
+                    asaasSyncStatus === 'idle' && 'bg-gray-100 text-gray-700',
+                  )}>
+                    {asaasSyncStatus === 'syncing' && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {asaasSyncStatus === 'success' && <CheckCircle2 className="h-3 w-3" />}
+                    {asaasSyncStatus === 'error' && <XCircle className="h-3 w-3" />}
+                    {asaasSyncStatus === 'success' ? 'Sincronizado' : asaasSyncStatus === 'syncing' ? 'Sincronizando...' : asaasSyncStatus === 'error' ? 'Erro' : 'Aguardando'}
+                  </span>
+                )}
+                {asaasLastSync && (
+                  <span className="text-sm text-gray-500">
+                    Última sync: {new Date(asaasLastSync).toLocaleString('pt-BR')}
+                  </span>
+                )}
+              </div>
+
+              {asaasSyncError && (
+                <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {asaasSyncError}
+                </div>
+              )}
+
+              <button
+                className={cn(btnPrimary, 'flex items-center gap-2')}
+                disabled={asaasSyncing || asaasSyncStatus === 'syncing'}
+                onClick={async () => {
+                  setAsaasSyncing(true);
+                  setAsaasSyncError(null);
+                  try {
+                    await api.triggerAsaasSync();
+                    setAsaasSyncStatus('syncing');
+                    // Poll for status
+                    const poll = setInterval(async () => {
+                      try {
+                        const status = await api.getAsaasSyncStatus();
+                        setAsaasSyncStatus(status.syncStatus);
+                        setAsaasLastSync(status.lastSyncAt);
+                        setAsaasSyncError(status.syncError);
+                        if (status.syncStatus !== 'syncing') {
+                          clearInterval(poll);
+                          setAsaasSyncing(false);
+                        }
+                      } catch {
+                        clearInterval(poll);
+                        setAsaasSyncing(false);
+                      }
+                    }, 3000);
+                  } catch (err: any) {
+                    setAsaasSyncError(err.message || 'Erro ao iniciar sincronização.');
+                    setAsaasSyncing(false);
+                  }
+                }}
+              >
+                <RefreshCw className={cn('h-4 w-4', asaasSyncing && 'animate-spin')} />
+                {asaasSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+              </button>
             </div>
           </div>
         </div>

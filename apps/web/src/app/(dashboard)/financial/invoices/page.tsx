@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Search, Plus, CheckCircle2, XCircle, RefreshCw, X, Eye, Calendar, DollarSign, Send, Pencil, Building2, ChevronLeft, ChevronRight, Download, Receipt } from 'lucide-react';
+import { Search, Plus, CheckCircle2, XCircle, RefreshCw, X, Eye, Calendar, DollarSign, Send, Pencil, Building2, ChevronLeft, ChevronRight, Download, Receipt, Trash2 } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Rascunho', color: 'bg-gray-100 text-gray-700' },
@@ -49,6 +49,7 @@ export default function InvoicesPage() {
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -431,6 +432,34 @@ export default function InvoicesPage() {
                           <button onClick={() => handleCancel(inv.id)} title="Cancelar" className="rounded p-1.5 text-red-600 hover:bg-red-50">
                             <XCircle className="h-4 w-4" />
                           </button>
+                        )}
+                        {inv.status !== 'PAID' && (
+                          confirmDeleteId === inv.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await api.deleteInvoice(inv.id);
+                                    showToast('Fatura excluída com sucesso');
+                                    setConfirmDeleteId(null);
+                                    load();
+                                  } catch (err: any) {
+                                    showToast(err.message || 'Erro ao excluir', 'error');
+                                  }
+                                }}
+                                className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
+                              >
+                                Confirmar
+                              </button>
+                              <button onClick={() => setConfirmDeleteId(null)} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">
+                                Não
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setConfirmDeleteId(inv.id)} title="Excluir fatura" className="rounded p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )
                         )}
                       </div>
                     </td>

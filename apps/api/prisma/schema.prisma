@@ -39,8 +39,29 @@ model Organization {
   contentPosts        ContentPost[]
   contentIdeas        ContentIdea[]
   clientProfiles      ClientContentProfile[]
+  integrations        Integration[]
 
   @@map("organizations")
+}
+
+model Integration {
+  id             String    @id @default(cuid())
+  organizationId String
+  provider       String    // "asaas"
+  apiKey         String
+  sandbox        Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  lastSyncAt     DateTime?
+  syncStatus     String?
+  syncError      String?
+  settings       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+  @@map("integrations")
 }
 
 model User {
@@ -192,9 +213,11 @@ model Company {
   industry       String?
   size           String?
   logo           String?
-  customFields   Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  customFields    Json?
+  asaasCustomerId String?
+  isCustomer      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contacts     Contact[]
@@ -204,6 +227,7 @@ model Company {
   invoices     Invoice[]   @relation("InvoiceCompany")
 
   @@index([organizationId])
+  @@index([organizationId, asaasCustomerId])
   @@map("companies")
 }
 

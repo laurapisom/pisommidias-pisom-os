@@ -8,6 +8,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { FinancialModule } from './modules/financial/financial.module';
 import { ContentModule } from './modules/content/content.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ContentModule } from './modules/content/content.module';
     OnboardingModule,
     FinancialModule,
     ContentModule,
+    IntegrationsModule,
   ],
 })
 export class AppModule {}

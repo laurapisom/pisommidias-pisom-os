@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -83,5 +83,11 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Cancelar fatura' })
   cancel(@CurrentUser() user: any, @Param('id') id: string) {
     return this.invoicesService.cancel(user.organizationId, id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Excluir fatura' })
+  remove(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.invoicesService.remove(user.organizationId, id);
   }
 }

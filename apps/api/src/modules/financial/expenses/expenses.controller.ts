@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -90,5 +90,11 @@ export class ExpensesController {
   @ApiOperation({ summary: 'Rejeitar despesa' })
   reject(@CurrentUser() user: any, @Param('id') id: string) {
     return this.expensesService.reject(user.organizationId, id, user.id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Excluir despesa' })
+  remove(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.expensesService.remove(user.organizationId, id);
   }
 }

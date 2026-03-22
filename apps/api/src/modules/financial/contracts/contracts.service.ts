@@ -138,6 +138,14 @@ export class ContractsService {
     };
   }
 
+  async remove(organizationId: string, id: string) {
+    await this.ensureExists(organizationId, id);
+    // Delete related invoices first, then the contract
+    await this.prisma.invoice.deleteMany({ where: { contractId: id, organizationId } });
+    await this.prisma.contract.delete({ where: { id } });
+    return { message: 'Contrato excluído com sucesso' };
+  }
+
   private async ensureExists(organizationId: string, id: string) {
     const contract = await this.prisma.contract.findFirst({ where: { id, organizationId } });
     if (!contract) throw new NotFoundException('Contrato não encontrado');
