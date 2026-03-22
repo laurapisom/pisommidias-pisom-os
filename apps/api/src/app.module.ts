@@ -7,7 +7,6 @@ import { CrmModule } from './modules/crm/crm.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { FinancialModule } from './modules/financial/financial.module';
-import { ContentModule } from './modules/content/content.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 
 @Module({
@@ -20,7 +19,6 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
     TasksModule,
     OnboardingModule,
     FinancialModule,
-    ContentModule,
     IntegrationsModule,
   ],
 })

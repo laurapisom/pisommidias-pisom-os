@@ -404,84 +404,6 @@ class ApiClient {
     return this.get<any[]>(`/financial/cashflow/client-profitability${query}`);
   }
 
-  // Content: Posts
-  getContentPosts(params?: Record<string, string>) {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.get<any>(`/content/posts${query}`);
-  }
-
-  getContentPostSummary() {
-    return this.get<any>('/content/posts/summary');
-  }
-
-  getContentCalendar(month?: string) {
-    const query = month ? `?month=${month}` : '';
-    return this.get<any[]>(`/content/posts/calendar${query}`);
-  }
-
-  getContentPost(id: string) {
-    return this.get<any>(`/content/posts/${id}`);
-  }
-
-  createContentPost(data: any) {
-    return this.post<any>('/content/posts', data);
-  }
-
-  updateContentPost(id: string, data: any) {
-    return this.request<any>(`/content/posts/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-  }
-
-  updateContentPostStatus(id: string, status: string, rejectionReason?: string) {
-    return this.patch<any>(`/content/posts/${id}/status`, { status, rejectionReason });
-  }
-
-  deleteContentPost(id: string) {
-    return this.delete<any>(`/content/posts/${id}`);
-  }
-
-  createContentVersion(postId: string, data: any) {
-    return this.post<any>(`/content/posts/${postId}/versions`, data);
-  }
-
-  // Content: Ideas
-  getContentIdeas(params?: Record<string, string>) {
-    const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.get<any>(`/content/ideas${query}`);
-  }
-
-  createContentIdea(data: any) {
-    return this.post<any>('/content/ideas', data);
-  }
-
-  updateContentIdeaStatus(id: string, status: string) {
-    return this.patch<any>(`/content/ideas/${id}/status`, { status });
-  }
-
-  deleteContentIdea(id: string) {
-    return this.delete<any>(`/content/ideas/${id}`);
-  }
-
-  // Content: Profiles
-  getContentProfiles() {
-    return this.get<any[]>('/content/profiles');
-  }
-
-  getContentProfile(id: string) {
-    return this.get<any>(`/content/profiles/${id}`);
-  }
-
-  createContentProfile(data: any) {
-    return this.post<any>('/content/profiles', data);
-  }
-
-  updateContentProfile(id: string, data: any) {
-    return this.request<any>(`/content/profiles/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-  }
-
-  deleteContentProfile(id: string) {
-    return this.delete<any>(`/content/profiles/${id}`);
-  }
-
   // Settings
   updateMe(data: any) {
     return this.patch<any>('/users/me', data);
@@ -497,7 +419,6 @@ class ApiClient {
     pipeline: boolean;
     tasks: boolean;
     onboarding: boolean;
-    content: boolean;
     categories: boolean;
     tags: boolean;
   }) {

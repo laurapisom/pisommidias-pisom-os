@@ -36,9 +36,6 @@ model Organization {
   expenses            Expense[]
   costCenters         CostCenter[]
   expenseCategories   ExpenseCategory[]
-  contentPosts        ContentPost[]
-  contentIdeas        ContentIdea[]
-  clientProfiles      ClientContentProfile[]
   integrations        Integration[]
   bankAccounts        BankAccount[]
   bankStatements      BankStatement[]
@@ -106,11 +103,6 @@ model User {
   onboardingItemsCompleted OnboardingItem[] @relation("OnboardingItemCompletedBy")
   expensesCreated  Expense[] @relation("ExpenseCreator")
   expensesApproved Expense[] @relation("ExpenseApprover")
-  contentPostsCreated  ContentPost[] @relation("ContentPostCreator")
-  contentPostsAssigned ContentPost[] @relation("ContentPostAssignee")
-  contentIdeasCreated  ContentIdea[] @relation("ContentIdeaCreator")
-  contentVersions      ContentVersion[]
-
   @@map("users")
 }
 
@@ -1071,123 +1063,3 @@ model ScheduledPayment {
   @@map("scheduled_payments")
 }
 
-// ─── Content + Editorial Calendar ─────────────────────────────────────
-
-model ClientContentProfile {
-  id             String   @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  clientName     String
-  brandVoice     String?  @db.Text
-  visualGuide    String?  @db.Text
-  targetAudience String?  @db.Text
-  competitors    String?  @db.Text
-  hashtags       String?  @db.Text
-  channels       ContentChannel[]
-  notes          String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  posts          ContentPost[]
-  ideas          ContentIdea[]
-
-  @@index([organizationId])
-}
-
-model ContentPost {
-  id               String        @id @default(cuid())
-  organizationId   String
-  organization     Organization  @relation(fields: [organizationId], references: [id])
-  profileId        String?
-  profile          ClientContentProfile? @relation(fields: [profileId], references: [id])
-  title            String
-  content          String?       @db.Text
-  caption          String?       @db.Text
-  channel          ContentChannel
-  status           ContentStatus @default(IDEA)
-  scheduledAt      DateTime?
-  publishedAt      DateTime?
-  createdById      String
-  createdBy        User          @relation("ContentPostCreator", fields: [createdById], references: [id])
-  assignedToId     String?
-  assignedTo       User?         @relation("ContentPostAssignee", fields: [assignedToId], references: [id])
-  tags             String[]
-  mediaUrls        String[]
-  rejectionReason  String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  versions         ContentVersion[]
-
-  @@index([organizationId])
-  @@index([profileId])
-  @@index([status])
-  @@index([scheduledAt])
-  @@index([channel])
-}
-
-model ContentIdea {
-  id             String   @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  profileId      String?
-  profile        ClientContentProfile? @relation(fields: [profileId], references: [id])
-  title          String
-  description    String?  @db.Text
-  channel        ContentChannel?
-  reference      String?  @db.Text
-  status         IdeaStatus @default(NEW)
-  createdById    String
-  createdBy      User     @relation("ContentIdeaCreator", fields: [createdById], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([organizationId])
-  @@index([profileId])
-}
-
-model ContentVersion {
-  id        String   @id @default(cuid())
-  postId    String
-  post      ContentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  version   Int
-  content   String?  @db.Text
-  caption   String?  @db.Text
-  note      String?  @db.Text
-  createdById String
-  createdBy User     @relation(fields: [createdById], references: [id])
-  createdAt DateTime @default(now())
-
-  @@unique([postId, version])
-  @@index([postId])
-}
-
-enum ContentChannel {
-  INSTAGRAM_FEED
-  INSTAGRAM_STORIES
-  INSTAGRAM_REELS
-  FACEBOOK
-  TIKTOK
-  YOUTUBE
-  LINKEDIN
-  TWITTER
-  BLOG
-  EMAIL
-  WHATSAPP
-  OTHER
-}
-
-enum ContentStatus {
-  IDEA
-  DRAFT
-  IN_REVIEW
-  APPROVED
-  SCHEDULED
-  PUBLISHED
-  REJECTED
-}
-
-enum IdeaStatus {
-  NEW
-  APPROVED
-  REJECTED
-  USED
-}

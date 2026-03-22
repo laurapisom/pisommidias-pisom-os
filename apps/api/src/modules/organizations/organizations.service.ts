@@ -7,7 +7,6 @@ export interface ResetOptions {
   pipeline: boolean;    // Pipelines & Stages (recreates default)
   tasks: boolean;       // Tasks & Comments
   onboarding: boolean;  // Onboardings & Templates
-  content: boolean;     // Posts, Ideas, Profiles, Versions
   categories: boolean;  // Expense Categories & Cost Centers
   tags: boolean;        // Tags & Tag Assignments
 }
@@ -107,21 +106,7 @@ export class OrganizationsService {
         deleted['onboardingTemplates'] = ot.count;
       }
 
-      // 6. Content
-      if (options.content) {
-        const cv = await tx.contentVersion.deleteMany({
-          where: { post: { organizationId } },
-        });
-        deleted['contentVersions'] = cv.count;
-        const cp = await tx.contentPost.deleteMany({ where: { organizationId } });
-        deleted['contentPosts'] = cp.count;
-        const ci = await tx.contentIdea.deleteMany({ where: { organizationId } });
-        deleted['contentIdeas'] = ci.count;
-        const cpf = await tx.clientContentProfile.deleteMany({ where: { organizationId } });
-        deleted['contentProfiles'] = cpf.count;
-      }
-
-      // 7. CRM (must delete deals before leads/contacts/companies due to FKs)
+      // 6. CRM (must delete deals before leads/contacts/companies due to FKs)
       if (options.crm) {
         const act = await tx.activity.deleteMany({ where: { organizationId } });
         deleted['activities'] = act.count;

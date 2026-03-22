@@ -109,7 +109,6 @@ export default function SettingsPage() {
     pipeline: false,
     tasks: false,
     onboarding: false,
-    content: false,
     categories: false,
     tags: false,
   });
@@ -223,7 +222,6 @@ export default function SettingsPage() {
     tags: 'Removendo tags...',
     tasks: 'Apagando tarefas e comentários...',
     onboarding: 'Removendo onboardings e templates...',
-    content: 'Apagando conteúdo, posts e ideias...',
     crm: 'Removendo CRM (deals, leads, contatos, empresas)...',
     pipeline: 'Resetando pipelines...',
   };
@@ -1523,13 +1521,6 @@ export default function SettingsPage() {
                       color: 'text-cyan-600 bg-cyan-50',
                     },
                     {
-                      key: 'content' as const,
-                      icon: FileText,
-                      label: 'Conteúdo',
-                      desc: 'Posts, ideias, perfis e versões',
-                      color: 'text-pink-600 bg-pink-50',
-                    },
-                    {
                       key: 'categories' as const,
                       icon: FolderOpen,
                       label: 'Categorias e Centros de Custo',
@@ -1593,7 +1584,6 @@ export default function SettingsPage() {
                         pipeline: true,
                         tasks: true,
                         onboarding: true,
-                        content: true,
                         categories: true,
                         tags: true,
                       })
@@ -1611,7 +1601,6 @@ export default function SettingsPage() {
                         pipeline: false,
                         tasks: false,
                         onboarding: false,
-                        content: false,
                         categories: false,
                         tags: false,
                       })
@@ -1682,11 +1671,6 @@ export default function SettingsPage() {
                   {resetOptions.onboarding && (
                     <li className="flex items-center gap-2 text-sm text-red-700">
                       <ClipboardList className="h-3.5 w-3.5" /> Onboardings e templates
-                    </li>
-                  )}
-                  {resetOptions.content && (
-                    <li className="flex items-center gap-2 text-sm text-red-700">
-                      <FileText className="h-3.5 w-3.5" /> Posts, ideias e perfis de conteúdo
                     </li>
                   )}
                   {resetOptions.categories && (
@@ -1784,7 +1768,6 @@ export default function SettingsPage() {
                         pipeline: Kanban,
                         tasks: CheckSquare,
                         onboarding: ClipboardList,
-                        content: FileText,
                         categories: FolderOpen,
                         tags: Tag,
                       };
@@ -1794,7 +1777,6 @@ export default function SettingsPage() {
                         pipeline: 'Pipeline',
                         tasks: 'Tarefas',
                         onboarding: 'Onboarding',
-                        content: 'Conteúdo',
                         categories: 'Categorias',
                         tags: 'Tags',
                       };
@@ -1866,10 +1848,6 @@ export default function SettingsPage() {
                       templateItems: 'Itens de Template',
                       templateSections: 'Seções de Template',
                       onboardingTemplates: 'Templates',
-                      contentVersions: 'Versões de Conteúdo',
-                      contentPosts: 'Posts',
-                      contentIdeas: 'Ideias',
-                      contentProfiles: 'Perfis de Conteúdo',
                       activities: 'Atividades',
                       dealContacts: 'Contatos de Deal',
                       deals: 'Deals',
@@ -1903,7 +1881,6 @@ export default function SettingsPage() {
                     pipeline: false,
                     tasks: false,
                     onboarding: false,
-                    content: false,
                     categories: false,
                     tags: false,
                   });

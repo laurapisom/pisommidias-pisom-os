@@ -21,10 +21,6 @@ import {
   Receipt,
   TrendingUp,
   CreditCard,
-  PenTool,
-  Calendar,
-  Lightbulb,
-  UserCog,
   Landmark,
   ListOrdered,
   FileBarChart,
@@ -46,16 +42,6 @@ const navItems = [
   },
   { label: 'Onboarding', href: '/onboarding', icon: ClipboardCheck },
   { label: 'Tarefas', href: '/tasks', icon: CheckSquare },
-  {
-    label: 'Conteúdo',
-    icon: PenTool,
-    children: [
-      { label: 'Posts', href: '/content', icon: FileText },
-      { label: 'Calendário', href: '/content/calendar', icon: Calendar },
-      { label: 'Ideias', href: '/content/ideas', icon: Lightbulb },
-      { label: 'Perfis', href: '/content/profiles', icon: UserCog },
-    ],
-  },
   {
     label: 'Financeiro',
     icon: DollarSign,

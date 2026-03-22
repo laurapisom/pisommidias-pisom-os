@@ -30,11 +30,6 @@ export class ResetDataDto {
   @ApiPropertyOptional()
   @IsBoolean()
   @IsOptional()
-  content: boolean = false;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
   categories: boolean = false;
 
   @ApiPropertyOptional()
