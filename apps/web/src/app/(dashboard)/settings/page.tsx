@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  Landmark,
 } from 'lucide-react';
 
 const TABS = [
@@ -138,6 +139,28 @@ export default function SettingsPage() {
   const [asaasSyncDetail, setAsaasSyncDetail] = useState<string>('');
   const [asaasKeyMasked, setAsaasKeyMasked] = useState(false);
 
+  // Sicoob state
+  const [sicoobClientId, setSicoobClientId] = useState('');
+  const [sicoobClientSecret, setSicoobClientSecret] = useState('');
+  const [sicoobCertPath, setSicoobCertPath] = useState('');
+  const [sicoobCertPass, setSicoobCertPass] = useState('');
+  const [sicoobAccount, setSicoobAccount] = useState('');
+  const [sicoobAgency, setSicoobAgency] = useState('');
+  const [sicoobSandbox, setSicoobSandbox] = useState(false);
+  const [sicoobSaving, setSicoobSaving] = useState(false);
+  const [sicoobMsg, setSicoobMsg] = useState('');
+  const [sicoobTesting, setSicoobTesting] = useState(false);
+  const [sicoobTestResult, setSicoobTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [sicoobEditing, setSicoobEditing] = useState(false);
+  const [sicoobSyncing, setSicoobSyncing] = useState(false);
+  const [sicoobSyncStatus, setSicoobSyncStatus] = useState<string | null>(null);
+  const [sicoobLastSync, setSicoobLastSync] = useState<string | null>(null);
+  const [sicoobSyncError, setSicoobSyncError] = useState<string | null>(null);
+  const [sicoobLoaded, setSicoobLoaded] = useState(false);
+  const [sicoobSyncProgress, setSicoobSyncProgress] = useState<number>(0);
+  const [sicoobSyncDetail, setSicoobSyncDetail] = useState<string>('');
+  const [sicoobShowSecret, setSicoobShowSecret] = useState(false);
+
   // Load Asaas integration settings when tab is activated
   useEffect(() => {
     if (activeTab !== 'integracoes' || asaasLoaded) return;
@@ -163,6 +186,36 @@ export default function SettingsPage() {
       setAsaasLoaded(true);
     })();
   }, [activeTab, asaasLoaded]);
+
+  // Load Sicoob integration settings when tab is activated
+  useEffect(() => {
+    if (activeTab !== 'integracoes' || sicoobLoaded) return;
+    (async () => {
+      try {
+        const [settings, status] = await Promise.all([
+          api.getSicoobIntegration(),
+          api.getSicoobSyncStatus(),
+        ]);
+        if (settings) {
+          setSicoobClientId(settings.clientId || '');
+          setSicoobCertPath(settings.certificatePath || '');
+          setSicoobAccount(settings.accountNumber || '');
+          setSicoobAgency(settings.agency || '');
+          setSicoobSandbox(settings.sandbox ?? false);
+          if (settings.clientSecret) setSicoobClientSecret(settings.clientSecret);
+          if (settings.certificatePass) setSicoobCertPass(settings.certificatePass);
+        }
+        setSicoobSyncStatus(status.syncStatus);
+        setSicoobLastSync(status.lastSyncAt);
+        setSicoobSyncError(status.syncError);
+        setSicoobSyncProgress(status.syncProgress || 0);
+        setSicoobSyncDetail(status.syncDetail || '');
+      } catch {
+        // no integration configured yet
+      }
+      setSicoobLoaded(true);
+    })();
+  }, [activeTab, sicoobLoaded]);
 
   const RESET_LABELS: Record<string, string> = {
     financial: 'Apagando dados financeiros...',
@@ -1073,6 +1126,326 @@ export default function SettingsPage() {
                         setAsaasSyncDetail('Cancelando sincronização...');
                       } catch {
                         setAsaasSyncError('Erro ao solicitar cancelamento.');
+                      }
+                    }}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ SICOOB ═══════════════════════════════════════ */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                <Landmark className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Sicoob</h2>
+                <p className="text-sm text-gray-500">
+                  Extrato bancário, DDA, pagamentos agendados e conciliação automática
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Client ID */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Client ID</label>
+                  <input
+                    type="text"
+                    className={cn(inputClass, !sicoobEditing && sicoobClientId && 'bg-gray-50 text-gray-500')}
+                    placeholder="Client ID do Sicoob"
+                    value={sicoobClientId}
+                    disabled={!sicoobEditing && !!sicoobClientId && sicoobLoaded}
+                    onChange={(e) => setSicoobClientId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Client Secret</label>
+                  <div className="relative">
+                    <input
+                      type={sicoobShowSecret ? 'text' : 'password'}
+                      className={cn(inputClass, !sicoobEditing && sicoobClientSecret && 'bg-gray-50 text-gray-500')}
+                      placeholder="Client Secret"
+                      value={sicoobClientSecret}
+                      disabled={!sicoobEditing && !!sicoobClientSecret && sicoobLoaded}
+                      onChange={(e) => setSicoobClientSecret(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSicoobShowSecret(!sicoobShowSecret)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {sicoobShowSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Certificate */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Caminho do certificado (.PFX)</label>
+                  <input
+                    type="text"
+                    className={cn(inputClass, !sicoobEditing && sicoobCertPath && 'bg-gray-50 text-gray-500')}
+                    placeholder="/path/to/certificate.pfx"
+                    value={sicoobCertPath}
+                    disabled={!sicoobEditing && !!sicoobCertPath && sicoobLoaded}
+                    onChange={(e) => setSicoobCertPath(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Senha do certificado</label>
+                  <input
+                    type="password"
+                    className={cn(inputClass, !sicoobEditing && sicoobCertPass && 'bg-gray-50 text-gray-500')}
+                    placeholder="Senha do .PFX"
+                    value={sicoobCertPass}
+                    disabled={!sicoobEditing && !!sicoobCertPass && sicoobLoaded}
+                    onChange={(e) => setSicoobCertPass(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Account info */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Agência</label>
+                  <input
+                    type="text"
+                    className={cn(inputClass, !sicoobEditing && sicoobAgency && 'bg-gray-50 text-gray-500')}
+                    placeholder="0001"
+                    value={sicoobAgency}
+                    disabled={!sicoobEditing && !!sicoobAgency && sicoobLoaded}
+                    onChange={(e) => setSicoobAgency(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Conta Corrente</label>
+                  <input
+                    type="text"
+                    className={cn(inputClass, !sicoobEditing && sicoobAccount && 'bg-gray-50 text-gray-500')}
+                    placeholder="12345-6"
+                    value={sicoobAccount}
+                    disabled={!sicoobEditing && !!sicoobAccount && sicoobLoaded}
+                    onChange={(e) => setSicoobAccount(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Sandbox */}
+              <div className="flex items-center gap-3">
+                <label className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    checked={sicoobSandbox}
+                    onChange={(e) => setSicoobSandbox(e.target.checked)}
+                    disabled={!sicoobEditing && !!sicoobClientId && sicoobLoaded}
+                    className="peer sr-only"
+                  />
+                  <div className="peer h-5 w-9 rounded-full bg-gray-300 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-pisom-600 peer-checked:after:translate-x-full peer-checked:after:border-white" />
+                </label>
+                <span className="text-sm text-gray-700">
+                  Modo Sandbox {sicoobSandbox ? '(ativo)' : '(produção)'}
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-wrap items-center gap-3">
+                {!sicoobClientId || sicoobEditing ? (
+                  <>
+                    <button
+                      className={btnPrimary}
+                      disabled={sicoobSaving || !sicoobClientId || !sicoobClientSecret || !sicoobCertPath || !sicoobCertPass || !sicoobAccount || !sicoobAgency}
+                      onClick={async () => {
+                        setSicoobSaving(true);
+                        setSicoobMsg('');
+                        try {
+                          await api.saveSicoobIntegration({
+                            clientId: sicoobClientId,
+                            clientSecret: sicoobClientSecret,
+                            certificatePath: sicoobCertPath,
+                            certificatePass: sicoobCertPass,
+                            accountNumber: sicoobAccount,
+                            agency: sicoobAgency,
+                            sandbox: sicoobSandbox,
+                          });
+                          setSicoobMsg('Credenciais salvas com sucesso.');
+                          setSicoobEditing(false);
+                          setSicoobTestResult(null);
+                        } catch (err: any) {
+                          setSicoobMsg(err.message || 'Erro ao salvar.');
+                        } finally {
+                          setSicoobSaving(false);
+                        }
+                      }}
+                    >
+                      {sicoobSaving ? 'Salvando...' : 'Salvar'}
+                    </button>
+                    {sicoobEditing && (
+                      <button
+                        className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        onClick={() => {
+                          setSicoobEditing(false);
+                          setSicoobLoaded(false);
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="whitespace-nowrap rounded-lg border border-orange-300 px-4 py-2.5 text-sm font-medium text-orange-700 hover:bg-orange-50"
+                      onClick={() => {
+                        setSicoobEditing(true);
+                        setSicoobTestResult(null);
+                        setSicoobMsg('');
+                      }}
+                    >
+                      Editar credenciais
+                    </button>
+                    <button
+                      className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      disabled={sicoobTesting}
+                      onClick={async () => {
+                        setSicoobTesting(true);
+                        setSicoobTestResult(null);
+                        try {
+                          const result = await api.testSicoobConnection();
+                          setSicoobTestResult(result);
+                        } catch (err: any) {
+                          setSicoobTestResult({ success: false, message: err.message || 'Erro ao testar conexão.' });
+                        } finally {
+                          setSicoobTesting(false);
+                        }
+                      }}
+                    >
+                      {sicoobTesting ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Testando...
+                        </span>
+                      ) : 'Testar Conexão'}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {sicoobMsg && <p className="text-sm text-gray-600">{sicoobMsg}</p>}
+              {sicoobTestResult && (
+                <div className={cn(
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
+                  sicoobTestResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
+                )}>
+                  {sicoobTestResult.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                  {sicoobTestResult.message}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sicoob Sync Section */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Sincronização Sicoob</h3>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                {sicoobSyncStatus && (
+                  <span className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+                    sicoobSyncStatus === 'success' && 'bg-green-100 text-green-700',
+                    sicoobSyncStatus === 'syncing' && 'bg-blue-100 text-blue-700',
+                    sicoobSyncStatus === 'error' && 'bg-red-100 text-red-700',
+                    sicoobSyncStatus === 'cancelled' && 'bg-orange-100 text-orange-700',
+                    sicoobSyncStatus === 'idle' && 'bg-gray-100 text-gray-700',
+                  )}>
+                    {sicoobSyncStatus === 'syncing' && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {sicoobSyncStatus === 'success' && <CheckCircle2 className="h-3 w-3" />}
+                    {(sicoobSyncStatus === 'error' || sicoobSyncStatus === 'cancelled') && <XCircle className="h-3 w-3" />}
+                    {sicoobSyncStatus === 'success' ? 'Sincronizado' : sicoobSyncStatus === 'syncing' ? 'Sincronizando...' : sicoobSyncStatus === 'error' ? 'Erro' : sicoobSyncStatus === 'cancelled' ? 'Cancelado' : 'Aguardando'}
+                  </span>
+                )}
+                {sicoobLastSync && (
+                  <span className="text-sm text-gray-500">
+                    Última sync: {new Date(sicoobLastSync).toLocaleString('pt-BR')}
+                  </span>
+                )}
+              </div>
+
+              {sicoobSyncError && (
+                <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{sicoobSyncError}</div>
+              )}
+
+              {sicoobSyncStatus === 'syncing' && (
+                <div className="space-y-2">
+                  <div className="h-2.5 w-full rounded-full bg-gray-200">
+                    <div
+                      className="h-2.5 rounded-full bg-blue-600 transition-all duration-500"
+                      style={{ width: `${sicoobSyncProgress}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-gray-500">
+                    <span>{sicoobSyncDetail || 'Iniciando sincronização...'}</span>
+                    <span>{sicoobSyncProgress}%</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <button
+                  className={cn(btnPrimary, 'flex items-center gap-2')}
+                  disabled={sicoobSyncing || sicoobSyncStatus === 'syncing' || !sicoobClientId}
+                  onClick={async () => {
+                    setSicoobSyncing(true);
+                    setSicoobSyncError(null);
+                    setSicoobSyncProgress(0);
+                    setSicoobSyncDetail('');
+                    try {
+                      await api.triggerSicoobSync();
+                      setSicoobSyncStatus('syncing');
+                      const poll = setInterval(async () => {
+                        try {
+                          const status = await api.getSicoobSyncStatus();
+                          setSicoobSyncStatus(status.syncStatus);
+                          setSicoobLastSync(status.lastSyncAt);
+                          setSicoobSyncError(status.syncError);
+                          setSicoobSyncProgress(status.syncProgress || 0);
+                          setSicoobSyncDetail(status.syncDetail || '');
+                          if (status.syncStatus !== 'syncing') {
+                            clearInterval(poll);
+                            setSicoobSyncing(false);
+                          }
+                        } catch {
+                          clearInterval(poll);
+                          setSicoobSyncing(false);
+                        }
+                      }, 2000);
+                    } catch (err: any) {
+                      setSicoobSyncError(err.message || 'Erro ao iniciar sincronização.');
+                      setSicoobSyncing(false);
+                    }
+                  }}
+                >
+                  <RefreshCw className={cn('h-4 w-4', sicoobSyncing && 'animate-spin')} />
+                  {sicoobSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+                </button>
+
+                {sicoobSyncStatus === 'syncing' && (
+                  <button
+                    className="flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                    onClick={async () => {
+                      try {
+                        await api.cancelSicoobSync();
+                        setSicoobSyncDetail('Cancelando sincronização...');
+                      } catch {
+                        setSicoobSyncError('Erro ao solicitar cancelamento.');
                       }
                     }}
                   >

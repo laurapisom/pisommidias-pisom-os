@@ -26,6 +26,8 @@ import {
   Lightbulb,
   UserCog,
   Landmark,
+  ListOrdered,
+  FileBarChart,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -63,6 +65,8 @@ const navItems = [
       { label: 'Contratos', href: '/financial/contracts', icon: FileText },
       { label: 'Faturas', href: '/financial/invoices', icon: Receipt },
       { label: 'Despesas', href: '/financial/expenses', icon: CreditCard },
+      { label: 'Extrato Bancário', href: '/financial/statements', icon: ListOrdered },
+      { label: 'DDA', href: '/financial/dda', icon: FileBarChart },
       { label: 'Fluxo de Caixa', href: '/financial/cashflow', icon: TrendingUp },
     ],
   },

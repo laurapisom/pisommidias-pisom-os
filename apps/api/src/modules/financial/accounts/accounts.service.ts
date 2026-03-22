@@ -190,10 +190,24 @@ export class AccountsService {
       _sum: { value: true },
     });
 
+    // Transferências internas: entradas de outras contas
+    const transfersIn = await this.prisma.internalTransfer.aggregate({
+      where: { organizationId, toAccountId: accountId },
+      _sum: { amount: true },
+    });
+
+    // Transferências internas: saídas para outras contas
+    const transfersOut = await this.prisma.internalTransfer.aggregate({
+      where: { organizationId, fromAccountId: accountId },
+      _sum: { amount: true },
+    });
+
     const income = Number(paidInvoices._sum.paidValue || 0);
     const expenses = Number(paidExpenses._sum.value || 0);
+    const inTransfers = Number(transfersIn._sum.amount || 0);
+    const outTransfers = Number(transfersOut._sum.amount || 0);
 
-    return initialBalance + income - expenses;
+    return initialBalance + income - expenses + inTransfers - outTransfers;
   }
 
   async getSummary(organizationId: string) {

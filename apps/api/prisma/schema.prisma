@@ -41,6 +41,10 @@ model Organization {
   clientProfiles      ClientContentProfile[]
   integrations        Integration[]
   bankAccounts        BankAccount[]
+  bankStatements      BankStatement[]
+  internalTransfers   InternalTransfer[]
+  ddaBills            DdaBill[]
+  scheduledPayments   ScheduledPayment[]
 
   @@map("organizations")
 }
@@ -48,8 +52,8 @@ model Organization {
 model Integration {
   id             String    @id @default(cuid())
   organizationId String
-  provider       String    // "asaas"
-  apiKey         String
+  provider       String    // "asaas", "sicoob"
+  apiKey         String    @default("")
   sandbox        Boolean   @default(false)
   isActive       Boolean   @default(true)
   lastSyncAt     DateTime?
@@ -60,6 +64,13 @@ model Integration {
   syncDetail     String?
   syncCancelled  Boolean   @default(false)
   settings       Json?
+  // Sicoob-specific fields
+  clientId        String?
+  clientSecret    String?
+  certificatePath String?
+  certificatePass String?
+  accountNumber   String?
+  agency          String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -684,9 +695,13 @@ model BankAccount {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoices     Invoice[]
-  expenses     Expense[]
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices          Invoice[]
+  expenses          Expense[]
+  statements        BankStatement[]
+  scheduledPayments ScheduledPayment[]
+  transfersFrom     InternalTransfer[] @relation("TransferFrom")
+  transfersTo       InternalTransfer[] @relation("TransferTo")
 
   @@index([organizationId])
   @@map("bank_accounts")
@@ -785,10 +800,11 @@ model Invoice {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contract     Contract?    @relation(fields: [contractId], references: [id], onDelete: SetNull)
-  company      Company?     @relation("InvoiceCompany", fields: [companyId], references: [id], onDelete: SetNull)
-  bankAccount  BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract       Contract?    @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  company        Company?     @relation("InvoiceCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  bankAccount    BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  bankStatements BankStatement[]
 
   @@index([organizationId, status])
   @@index([organizationId, dueDate])
@@ -882,16 +898,20 @@ model Expense {
   attachmentUrl       String?
   notes               String?
   asaasTransactionId  String?   @unique
+  sicoobStatementId   String?   @unique
   bankAccountId  String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category     ExpenseCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  costCenter   CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
-  createdBy    User              @relation("ExpenseCreator", fields: [createdById], references: [id])
-  approvedBy   User?             @relation("ExpenseApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  bankAccount  BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category          ExpenseCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  createdBy         User              @relation("ExpenseCreator", fields: [createdById], references: [id])
+  approvedBy        User?             @relation("ExpenseApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  bankAccount       BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  bankStatements    BankStatement[]
+  ddaBills          DdaBill[]
+  scheduledPayments ScheduledPayment[]
 
   @@index([organizationId, status])
   @@index([organizationId, dueDate])
@@ -913,6 +933,142 @@ enum ExpenseType {
   VARIABLE
   ONE_TIME
   INVESTMENT
+}
+
+// ============================================================
+// FINANCEIRO: EXTRATO BANCÁRIO (transações brutas do banco)
+// ============================================================
+
+model BankStatement {
+  id              String   @id @default(cuid())
+  organizationId  String
+  bankAccountId   String
+
+  externalId      String?
+  date            DateTime
+  description     String
+  amount          Decimal  @db.Decimal(12, 2)
+  balance         Decimal? @db.Decimal(12, 2)
+  type            String   // CREDIT, DEBIT
+  category        String?  // TED, PIX, BOLETO, TARIFA, etc.
+  counterpart     String?
+  documentNumber  String?
+
+  reconciled            Boolean  @default(false)
+  reconciledAt          DateTime?
+  reconciledExpenseId   String?
+  reconciledInvoiceId   String?
+  reconciledTransferId  String?
+
+  createdAt       DateTime @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount  BankAccount      @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  expense      Expense?         @relation(fields: [reconciledExpenseId], references: [id], onDelete: SetNull)
+  invoice      Invoice?         @relation(fields: [reconciledInvoiceId], references: [id], onDelete: SetNull)
+  transfer     InternalTransfer? @relation(fields: [reconciledTransferId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, bankAccountId, externalId])
+  @@index([organizationId, date])
+  @@index([organizationId, reconciled])
+  @@map("bank_statements")
+}
+
+// ============================================================
+// FINANCEIRO: TRANSFERÊNCIAS INTERNAS (Asaas ↔ Sicoob)
+// ============================================================
+
+model InternalTransfer {
+  id              String   @id @default(cuid())
+  organizationId  String
+
+  fromAccountId   String
+  toAccountId     String
+  amount          Decimal  @db.Decimal(12, 2)
+  date            DateTime
+  description     String?
+
+  asaasTransactionId  String?
+  sicoobTransactionId String?
+
+  status          String   @default("DETECTED") // DETECTED, CONFIRMED, MANUAL
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fromAccount    BankAccount     @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccount      BankAccount     @relation("TransferTo", fields: [toAccountId], references: [id])
+  bankStatements BankStatement[]
+
+  @@index([organizationId, date])
+  @@map("internal_transfers")
+}
+
+// ============================================================
+// FINANCEIRO: DDA - Débitos Diretos Autorizados
+// ============================================================
+
+model DdaBill {
+  id              String   @id @default(cuid())
+  organizationId  String
+
+  externalId      String
+  barcode         String?
+  issuerName      String
+  issuerDocument  String?
+  amount          Decimal  @db.Decimal(12, 2)
+  dueDate         DateTime
+
+  status          String   @default("PENDING") // PENDING, SCHEDULED, PAID, EXPIRED, CANCELLED
+  scheduledDate   DateTime?
+  paidAt          DateTime?
+
+  expenseId       String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expense      Expense?     @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, dueDate])
+  @@index([organizationId, status])
+  @@map("dda_bills")
+}
+
+// ============================================================
+// FINANCEIRO: PAGAMENTOS AGENDADOS
+// ============================================================
+
+model ScheduledPayment {
+  id              String   @id @default(cuid())
+  organizationId  String
+  bankAccountId   String
+
+  externalId      String?
+  type            String   // BOLETO, TED, PIX
+  recipient       String
+  recipientDoc    String?
+  amount          Decimal  @db.Decimal(12, 2)
+  scheduledDate   DateTime
+
+  status          String   @default("SCHEDULED") // SCHEDULED, PROCESSING, PAID, FAILED, CANCELLED
+  paidAt          DateTime?
+
+  expenseId       String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount  BankAccount  @relation(fields: [bankAccountId], references: [id])
+  expense      Expense?     @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, scheduledDate])
+  @@map("scheduled_payments")
 }
 
 // ─── Content + Editorial Calendar ─────────────────────────────────────

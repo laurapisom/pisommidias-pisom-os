@@ -580,6 +580,112 @@ class ApiClient {
   linkAsaasToAccount(accountId: string) {
     return this.post<{ invoicesLinked: number; expensesLinked: number }>(`/financial/accounts/${accountId}/link-asaas`);
   }
+
+  // ── Sicoob Integration ──────────────────────────────────
+
+  getSicoobIntegration() {
+    return this.get<any>('/integrations/sicoob');
+  }
+
+  saveSicoobIntegration(data: {
+    clientId: string;
+    clientSecret: string;
+    certificatePath: string;
+    certificatePass: string;
+    accountNumber: string;
+    agency: string;
+    sandbox?: boolean;
+  }) {
+    return this.post<any>('/integrations/sicoob', data);
+  }
+
+  testSicoobConnection() {
+    return this.post<{ success: boolean; message: string }>('/integrations/sicoob/test');
+  }
+
+  triggerSicoobSync() {
+    return this.post<{ message: string }>('/integrations/sicoob/sync');
+  }
+
+  cancelSicoobSync() {
+    return this.post<{ message: string }>('/integrations/sicoob/sync/cancel');
+  }
+
+  getSicoobSyncStatus() {
+    return this.get<{
+      syncStatus: string | null;
+      lastSyncAt: string | null;
+      syncError: string | null;
+      syncProgress: number | null;
+      syncPhase: string | null;
+      syncDetail: string | null;
+    }>('/integrations/sicoob/status');
+  }
+
+  deleteSicoobIntegration() {
+    return this.delete<any>('/integrations/sicoob');
+  }
+
+  // ── Bank Statements ─────────────────────────────────────
+
+  getBankStatements(filters?: {
+    startDate?: string;
+    endDate?: string;
+    type?: string;
+    reconciled?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.set('startDate', filters.startDate);
+    if (filters?.endDate) params.set('endDate', filters.endDate);
+    if (filters?.type) params.set('type', filters.type);
+    if (filters?.reconciled) params.set('reconciled', filters.reconciled);
+    if (filters?.page) params.set('page', String(filters.page));
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const qs = params.toString();
+    return this.get<any>(`/integrations/sicoob/statements${qs ? `?${qs}` : ''}`);
+  }
+
+  matchStatement(statementId: string, body: { expenseId?: string; invoiceId?: string }) {
+    return this.post<any>(`/integrations/sicoob/statements/${statementId}/match`, body);
+  }
+
+  unmatchStatement(statementId: string) {
+    return this.post<any>(`/integrations/sicoob/statements/${statementId}/unmatch`);
+  }
+
+  triggerReconciliation() {
+    return this.post<{ reconciled: number; message: string }>('/integrations/sicoob/reconcile');
+  }
+
+  // ── DDA Bills ───────────────────────────────────────────
+
+  getDdaBills(filters?: { status?: string; page?: number; limit?: number }) {
+    const params = new URLSearchParams();
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.page) params.set('page', String(filters.page));
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const qs = params.toString();
+    return this.get<any>(`/integrations/sicoob/dda${qs ? `?${qs}` : ''}`);
+  }
+
+  // ── Internal Transfers ──────────────────────────────────
+
+  getInternalTransfers(filters?: {
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.set('startDate', filters.startDate);
+    if (filters?.endDate) params.set('endDate', filters.endDate);
+    if (filters?.page) params.set('page', String(filters.page));
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const qs = params.toString();
+    return this.get<any>(`/integrations/transfers${qs ? `?${qs}` : ''}`);
+  }
 }
 
 export const api = new ApiClient();

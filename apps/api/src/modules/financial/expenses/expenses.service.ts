@@ -96,6 +96,9 @@ export class ExpensesService {
     if (expense.asaasTransactionId) {
       throw new BadRequestException('Despesas sincronizadas do Asaas não podem ser editadas');
     }
+    if (expense.sicoobStatementId) {
+      throw new BadRequestException('Despesas sincronizadas do Sicoob não podem ser editadas');
+    }
     const updateData: any = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.value !== undefined) updateData.value = data.value;
@@ -227,6 +230,9 @@ export class ExpensesService {
     const expense = await this.ensureExists(organizationId, id);
     if (expense.asaasTransactionId) {
       throw new BadRequestException('Despesas sincronizadas do Asaas não podem ser excluídas');
+    }
+    if (expense.sicoobStatementId) {
+      throw new BadRequestException('Despesas sincronizadas do Sicoob não podem ser excluídas');
     }
     await this.prisma.expense.delete({ where: { id } });
     return { message: 'Despesa excluída com sucesso' };

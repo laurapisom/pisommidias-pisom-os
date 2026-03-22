@@ -56,7 +56,7 @@ export class CashflowService {
       const end = new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59);
       const monthKey = start.toISOString().slice(0, 7);
 
-      const [expectedRevenue, expectedExpenses] = await Promise.all([
+      const [expectedRevenue, expectedExpenses, ddaExpenses, scheduledExpenses] = await Promise.all([
         this.prisma.invoice.aggregate({
           where: {
             organizationId,
@@ -73,14 +73,49 @@ export class CashflowService {
           },
           _sum: { value: true },
         }),
+        // DDA bills pending (certain future expenses)
+        this.prisma.ddaBill.aggregate({
+          where: {
+            organizationId,
+            status: { in: ['PENDING', 'SCHEDULED'] },
+            dueDate: { gte: start, lte: end },
+            expenseId: null, // Not already linked to an expense
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        // Scheduled payments (confirmed future outflows)
+        this.prisma.scheduledPayment.aggregate({
+          where: {
+            organizationId,
+            status: { in: ['SCHEDULED', 'PROCESSING'] },
+            scheduledDate: { gte: start, lte: end },
+            expenseId: null,
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
       ]);
+
+      const revenue = Number(expectedRevenue._sum.totalValue || 0);
+      const manualExpenses = Number(expectedExpenses._sum.value || 0);
+      const ddaAmount = Number(ddaExpenses._sum.amount || 0);
+      const scheduledAmount = Number(scheduledExpenses._sum.amount || 0);
+      const totalExpenses = manualExpenses + ddaAmount + scheduledAmount;
 
       results.push({
         month: monthKey,
         projected: true,
-        revenue: Number(expectedRevenue._sum.totalValue || 0),
-        expenses: Number(expectedExpenses._sum.value || 0),
-        balance: Number(expectedRevenue._sum.totalValue || 0) - Number(expectedExpenses._sum.value || 0),
+        revenue,
+        expenses: totalExpenses,
+        expenseBreakdown: {
+          manual: manualExpenses,
+          dda: ddaAmount,
+          ddaCount: ddaExpenses._count,
+          scheduled: scheduledAmount,
+          scheduledCount: scheduledExpenses._count,
+        },
+        balance: revenue - totalExpenses,
       });
     }
 
