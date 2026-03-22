@@ -445,6 +445,10 @@ class ApiClient {
     return this.patch<any>(`/users/team/${memberId}/active`, { isActive });
   }
 
+  resetMemberPassword(memberId: string, password: string) {
+    return this.patch<any>(`/users/team/${memberId}/password`, { password });
+  }
+
   // Integrations
   getAsaasIntegration() {
     return this.get<any>('/integrations/asaas');

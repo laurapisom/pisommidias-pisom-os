@@ -104,7 +104,7 @@ export class UsersService {
     });
   }
 
-  async inviteMember(organizationId: string, data: { email: string; firstName: string; lastName: string; role?: string; modulePermissions?: any }) {
+  async inviteMember(organizationId: string, data: { email: string; firstName: string; lastName: string; password?: string; role?: string; modulePermissions?: any }) {
     // Check if user already exists
     let user = await this.prisma.user.findUnique({ where: { email: data.email } });
 
@@ -115,14 +115,14 @@ export class UsersService {
       });
       if (existing) throw new BadRequestException('Este usuário já é membro da organização');
     } else {
-      // Create user with a temporary password
-      const tempPassword = await bcrypt.hash(Math.random().toString(36).slice(-8), 10);
+      // Create user with password provided by admin, or a random temp password
+      const passwordHash = await bcrypt.hash(data.password || Math.random().toString(36).slice(-8), 10);
       user = await this.prisma.user.create({
         data: {
           email: data.email,
           firstName: data.firstName,
           lastName: data.lastName,
-          passwordHash: tempPassword,
+          passwordHash,
         },
       });
     }
@@ -214,5 +214,25 @@ export class UsersService {
     });
 
     return { success: true, isActive };
+  }
+
+  async resetMemberPassword(organizationId: string, memberId: string, password: string) {
+    const member = await this.prisma.organizationMember.findFirst({
+      where: { id: memberId, organizationId },
+    });
+    if (!member) throw new NotFoundException('Membro não encontrado');
+    if (member.role === 'OWNER') throw new ForbiddenException('Não é possível alterar a senha do proprietário por aqui');
+
+    if (!password || password.length < 6) {
+      throw new BadRequestException('A senha deve ter pelo menos 6 caracteres');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await this.prisma.user.update({
+      where: { id: member.userId },
+      data: { passwordHash },
+    });
+
+    return { success: true };
   }
 }

@@ -65,6 +65,16 @@ export class UsersController {
     return this.usersService.toggleMemberActive(user.organizationId, memberId, body.isActive);
   }
 
+  @Patch('team/:memberId/password')
+  @ApiOperation({ summary: 'Resetar senha do membro' })
+  resetMemberPassword(
+    @CurrentUser() user: any,
+    @Param('memberId') memberId: string,
+    @Body() body: { password: string },
+  ) {
+    return this.usersService.resetMemberPassword(user.organizationId, memberId, body.password);
+  }
+
   @Delete('team/:memberId')
   @ApiOperation({ summary: 'Remover membro da organização' })
   removeMember(

@@ -17,6 +17,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Trash2,
+  KeyRound,
   LayoutDashboard,
   Target,
   ClipboardCheck,
@@ -70,6 +71,7 @@ export default function CollaboratorsPage() {
     email: '',
     firstName: '',
     lastName: '',
+    password: '',
     role: 'MEMBER',
     modulePermissions: { ...defaultPerms } as Record<string, boolean>,
   });
@@ -78,6 +80,11 @@ export default function CollaboratorsPage() {
 
   // Delete confirm
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  // Reset password
+  const [resetPasswordMember, setResetPasswordMember] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -96,8 +103,12 @@ export default function CollaboratorsPage() {
   }
 
   async function handleInvite() {
-    if (!inviteForm.email || !inviteForm.firstName) {
-      setInviteError('Preencha email e nome');
+    if (!inviteForm.email || !inviteForm.firstName || !inviteForm.password) {
+      setInviteError('Preencha email, nome e senha');
+      return;
+    }
+    if (inviteForm.password.length < 6) {
+      setInviteError('A senha deve ter pelo menos 6 caracteres');
       return;
     }
     setInviting(true);
@@ -109,7 +120,7 @@ export default function CollaboratorsPage() {
       SYSTEM_MODULES.forEach((m) => {
         resetPerms[m.key] = m.key === 'dashboard' || m.key === 'tasks';
       });
-      setInviteForm({ email: '', firstName: '', lastName: '', role: 'MEMBER', modulePermissions: { ...resetPerms } });
+      setInviteForm({ email: '', firstName: '', lastName: '', password: '', role: 'MEMBER', modulePermissions: { ...resetPerms } });
       await loadData();
     } catch (e: any) {
       setInviteError(e.message || 'Erro ao convidar');
@@ -167,6 +178,24 @@ export default function CollaboratorsPage() {
       await api.removeMember(memberId);
       setDeleteConfirm(null);
       await loadData();
+    } catch {
+      /* ignore */
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleResetPassword(memberId: string) {
+    if (!newPassword || newPassword.length < 6) return;
+    setSaving(memberId);
+    try {
+      await api.resetMemberPassword(memberId, newPassword);
+      setResetPasswordSuccess(true);
+      setTimeout(() => {
+        setResetPasswordMember(null);
+        setNewPassword('');
+        setResetPasswordSuccess(false);
+      }, 2000);
     } catch {
       /* ignore */
     } finally {
@@ -269,6 +298,17 @@ export default function CollaboratorsPage() {
                 </div>
               </div>
               <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Senha de Acesso</label>
+                <input
+                  type="text"
+                  value={inviteForm.password}
+                  onChange={(e) => setInviteForm({ ...inviteForm, password: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:ring-1 focus:ring-pisom-500"
+                  placeholder="Mínimo 6 caracteres"
+                />
+                <p className="mt-1 text-xs text-gray-400">Informe essa senha ao colaborador para o primeiro acesso.</p>
+              </div>
+              <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Cargo</label>
                 <select
                   value={inviteForm.role}
@@ -361,6 +401,55 @@ export default function CollaboratorsPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {resetPasswordMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Resetar Senha</h2>
+              <button onClick={() => setResetPasswordMember(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {resetPasswordSuccess ? (
+              <div className="py-4 text-center">
+                <Check className="mx-auto h-10 w-10 text-emerald-500 mb-2" />
+                <p className="text-sm font-medium text-gray-900">Senha alterada com sucesso!</p>
+                <p className="mt-1 text-xs text-gray-500">Informe a nova senha ao colaborador.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Nova Senha</label>
+                  <input
+                    type="text"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:ring-1 focus:ring-pisom-500"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setResetPasswordMember(null)}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleResetPassword(resetPasswordMember)}
+                    disabled={!newPassword || newPassword.length < 6 || saving === resetPasswordMember}
+                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    Alterar Senha
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -475,6 +564,13 @@ export default function CollaboratorsPage() {
                       )}
                     >
                       <Shield className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => { setResetPasswordMember(member.id); setNewPassword(''); setResetPasswordSuccess(false); }}
+                      title="Resetar senha"
+                      className="rounded-lg p-2 text-gray-400 hover:bg-amber-50 hover:text-amber-600 transition"
+                    >
+                      <KeyRound className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleToggleActive(member.id, member.user.isActive)}
