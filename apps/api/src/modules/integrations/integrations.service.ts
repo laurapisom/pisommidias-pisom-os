@@ -42,28 +42,19 @@ export class IntegrationsService {
     });
   }
 
-  async testAsaasConnection(organizationId: string, body?: { apiKey?: string; sandbox?: boolean }) {
-    let apiKey: string;
-    let sandbox: boolean;
+  async testAsaasConnection(organizationId: string) {
+    const integration = await this.prisma.integration.findUnique({
+      where: { organizationId_provider: { organizationId, provider: 'asaas' } },
+    });
 
-    if (body?.apiKey) {
-      // Test with the key provided in the request (before saving)
-      apiKey = body.apiKey;
-      sandbox = body.sandbox ?? false;
-    } else {
-      // Fallback to saved integration
-      const integration = await this.prisma.integration.findUnique({
-        where: { organizationId_provider: { organizationId, provider: 'asaas' } },
-      });
-
-      if (!integration) {
-        throw new NotFoundException('Integração Asaas não configurada');
-      }
-      apiKey = integration.apiKey;
-      sandbox = integration.sandbox;
+    if (!integration) {
+      throw new NotFoundException('Integração Asaas não configurada');
     }
 
-    const success = await this.asaasService.testConnection(apiKey, sandbox);
+    const success = await this.asaasService.testConnection(
+      integration.apiKey,
+      integration.sandbox,
+    );
 
     return {
       success,

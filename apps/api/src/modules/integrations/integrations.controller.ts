@@ -35,11 +35,8 @@ export class IntegrationsController {
 
   @Post('asaas/test')
   @ApiOperation({ summary: 'Test Asaas connection' })
-  testConnection(
-    @CurrentUser() user: any,
-    @Body() body: { apiKey?: string; sandbox?: boolean },
-  ) {
-    return this.integrationsService.testAsaasConnection(user.organizationId, body);
+  testConnection(@CurrentUser() user: any) {
+    return this.integrationsService.testAsaasConnection(user.organizationId);
   }
 
   @Post('asaas/sync')

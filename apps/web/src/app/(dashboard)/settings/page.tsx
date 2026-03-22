@@ -127,6 +127,7 @@ export default function SettingsPage() {
   const [asaasMsg, setAsaasMsg] = useState('');
   const [asaasTesting, setAsaasTesting] = useState(false);
   const [asaasTestResult, setAsaasTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [asaasEditingKey, setAsaasEditingKey] = useState(false);
   const [asaasSyncing, setAsaasSyncing] = useState(false);
   const [asaasSyncStatus, setAsaasSyncStatus] = useState<string | null>(null);
   const [asaasLastSync, setAsaasLastSync] = useState<string | null>(null);
@@ -830,24 +831,41 @@ export default function SettingsPage() {
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   API Key
                 </label>
-                <div className="relative">
-                  <input
-                    type={asaasShowKey ? 'text' : 'password'}
-                    className={inputClass}
-                    placeholder="Insira sua API Key do Asaas"
-                    value={asaasApiKey}
-                    onChange={(e) => {
-                      setAsaasApiKey(e.target.value);
-                      setAsaasTestResult(null);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setAsaasShowKey(!asaasShowKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {asaasShowKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={asaasShowKey ? 'text' : 'password'}
+                      className={cn(inputClass, !asaasEditingKey && asaasApiKey && 'bg-gray-50 text-gray-500')}
+                      placeholder="Insira sua API Key do Asaas"
+                      value={asaasApiKey}
+                      disabled={!asaasEditingKey && !!asaasApiKey && asaasLoaded}
+                      onChange={(e) => {
+                        setAsaasApiKey(e.target.value);
+                        setAsaasTestResult(null);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAsaasShowKey(!asaasShowKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {asaasShowKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {asaasApiKey && asaasLoaded && !asaasEditingKey && (
+                    <button
+                      type="button"
+                      className="whitespace-nowrap rounded-lg border border-orange-300 px-4 py-2.5 text-sm font-medium text-orange-700 hover:bg-orange-50"
+                      onClick={() => {
+                        setAsaasEditingKey(true);
+                        setAsaasApiKey('');
+                        setAsaasTestResult(null);
+                        setAsaasMsg('');
+                      }}
+                    >
+                      Trocar chave
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -858,6 +876,7 @@ export default function SettingsPage() {
                     type="checkbox"
                     checked={asaasSandbox}
                     onChange={(e) => setAsaasSandbox(e.target.checked)}
+                    disabled={!asaasEditingKey && !!asaasApiKey && asaasLoaded}
                     className="peer sr-only"
                   />
                   <div className="peer h-5 w-9 rounded-full bg-gray-300 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-pisom-600 peer-checked:after:translate-x-full peer-checked:after:border-white" />
@@ -869,50 +888,68 @@ export default function SettingsPage() {
 
               {/* Action buttons */}
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  className={btnPrimary}
-                  disabled={asaasSaving || !asaasApiKey}
-                  onClick={async () => {
-                    setAsaasSaving(true);
-                    setAsaasMsg('');
-                    try {
-                      await api.saveAsaasIntegration({ apiKey: asaasApiKey, sandbox: asaasSandbox });
-                      setAsaasMsg('Configuração salva com sucesso.');
-                    } catch (err: any) {
-                      setAsaasMsg(err.message || 'Erro ao salvar.');
-                    } finally {
-                      setAsaasSaving(false);
-                    }
-                  }}
-                >
-                  {asaasSaving ? 'Salvando...' : 'Salvar'}
-                </button>
-
-                <button
-                  className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  disabled={asaasTesting || !asaasApiKey}
-                  onClick={async () => {
-                    setAsaasTesting(true);
-                    setAsaasTestResult(null);
-                    try {
-                      const result = await api.testAsaasConnection({ apiKey: asaasApiKey, sandbox: asaasSandbox });
-                      setAsaasTestResult(result);
-                    } catch (err: any) {
-                      setAsaasTestResult({ success: false, message: err.message || 'Erro ao testar conexão.' });
-                    } finally {
-                      setAsaasTesting(false);
-                    }
-                  }}
-                >
-                  {asaasTesting ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Testando...
-                    </span>
-                  ) : (
-                    'Testar Conexão'
-                  )}
-                </button>
+                {asaasEditingKey ? (
+                  <>
+                    <button
+                      className={btnPrimary}
+                      disabled={asaasSaving || !asaasApiKey}
+                      onClick={async () => {
+                        setAsaasSaving(true);
+                        setAsaasMsg('');
+                        try {
+                          await api.saveAsaasIntegration({ apiKey: asaasApiKey, sandbox: asaasSandbox });
+                          setAsaasMsg('Chave salva com sucesso.');
+                          setAsaasEditingKey(false);
+                          setAsaasTestResult(null);
+                        } catch (err: any) {
+                          setAsaasMsg(err.message || 'Erro ao salvar.');
+                        } finally {
+                          setAsaasSaving(false);
+                        }
+                      }}
+                    >
+                      {asaasSaving ? 'Salvando...' : 'Salvar'}
+                    </button>
+                    <button
+                      className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      onClick={() => {
+                        setAsaasEditingKey(false);
+                        // Reload the saved key
+                        setAsaasLoaded(false);
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      disabled={asaasTesting || !asaasApiKey}
+                      onClick={async () => {
+                        setAsaasTesting(true);
+                        setAsaasTestResult(null);
+                        try {
+                          const result = await api.testAsaasConnection();
+                          setAsaasTestResult(result);
+                        } catch (err: any) {
+                          setAsaasTestResult({ success: false, message: err.message || 'Erro ao testar conexão.' });
+                        } finally {
+                          setAsaasTesting(false);
+                        }
+                      }}
+                    >
+                      {asaasTesting ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Testando...
+                        </span>
+                      ) : (
+                        'Testar Conexão'
+                      )}
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Messages */}
