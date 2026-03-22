@@ -85,6 +85,7 @@ export class AsaasSyncService {
         : undefined;
 
       // Obter contagens totais para calcular progresso
+      this.syncStartedAt = Date.now();
       await this.updateProgress(integration.id, 0, 'counting', 'Calculando total de registros...');
 
       const customerTotal = await this.asaasService.getCount('customers', integration.apiKey, integration.sandbox, dateFilter);
@@ -130,6 +131,9 @@ export class AsaasSyncService {
         );
       }
 
+      this.companyCache.clear();
+      this.contractCache.clear();
+
       await this.prisma.integration.update({
         where: { id: integration.id },
         data: {
@@ -144,6 +148,8 @@ export class AsaasSyncService {
 
       return { customers: customerCount, subscriptions: subscriptionCount, payments: paymentCount, expenses: expenseCount };
     } catch (error) {
+      this.companyCache.clear();
+      this.contractCache.clear();
       const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -161,6 +167,8 @@ export class AsaasSyncService {
     }
   }
 
+  private syncStartedAt: number = 0;
+
   private async checkCancelled(integrationId: string): Promise<void> {
     const integration = await this.prisma.integration.findUnique({ where: { id: integrationId } });
     if (integration?.syncCancelled) {
@@ -168,16 +176,27 @@ export class AsaasSyncService {
     }
   }
 
-  private async updateProgress(integrationId: string, progress: number, phase: string, detail: string) {
+  private async updateProgress(integrationId: string, progress: number, phase: string, detail: string, eta?: string) {
     await this.prisma.integration.update({
       where: { id: integrationId },
-      data: { syncProgress: progress, syncPhase: phase, syncDetail: detail },
+      data: { syncProgress: progress, syncPhase: phase, syncDetail: eta ? `${detail} | ${eta}` : detail },
     });
   }
 
   private calcProgress(processed: number, grandTotal: number): number {
     if (grandTotal === 0) return 100;
     return Math.min(Math.round((processed / grandTotal) * 100), 99);
+  }
+
+  private calcEta(processed: number, grandTotal: number): string {
+    if (processed <= 0 || grandTotal <= 0) return '';
+    const elapsed = (Date.now() - this.syncStartedAt) / 1000; // seconds
+    const rate = processed / elapsed; // items per second
+    const remaining = grandTotal - processed;
+    const etaSeconds = Math.ceil(remaining / rate);
+    if (etaSeconds < 60) return `~${etaSeconds}s restantes`;
+    if (etaSeconds < 3600) return `~${Math.ceil(etaSeconds / 60)}min restantes`;
+    return `~${Math.floor(etaSeconds / 3600)}h${Math.ceil((etaSeconds % 3600) / 60)}min restantes`;
   }
 
   private async syncCustomers(
@@ -192,13 +211,18 @@ export class AsaasSyncService {
       for (const customer of batch) {
         await this.upsertCompany(organizationId, customer);
         count++;
+        if (count % 10 === 0) {
+          await this.checkCancelled(integrationId);
+          const total = processedBefore + count;
+          await this.updateProgress(
+            integrationId,
+            this.calcProgress(total, grandTotal),
+            'customers',
+            `Sincronizando clientes (${count}/${phaseTotal})...`,
+            this.calcEta(total, grandTotal),
+          );
+        }
       }
-      await this.updateProgress(
-        integrationId,
-        this.calcProgress(processedBefore + count, grandTotal),
-        'customers',
-        `Sincronizando clientes (${count}/${phaseTotal})...`,
-      );
     }
     this.logger.log(`Synced ${count} customers for org ${organizationId}`);
     return count;
@@ -260,13 +284,18 @@ export class AsaasSyncService {
       for (const sub of batch) {
         await this.upsertContract(organizationId, sub);
         count++;
+        if (count % 10 === 0) {
+          await this.checkCancelled(integrationId);
+          const total = processedBefore + count;
+          await this.updateProgress(
+            integrationId,
+            this.calcProgress(total, grandTotal),
+            'subscriptions',
+            `Sincronizando assinaturas (${count}/${phaseTotal})...`,
+            this.calcEta(total, grandTotal),
+          );
+        }
       }
-      await this.updateProgress(
-        integrationId,
-        this.calcProgress(processedBefore + count, grandTotal),
-        'subscriptions',
-        `Sincronizando assinaturas (${count}/${phaseTotal})...`,
-      );
     }
     this.logger.log(`Synced ${count} subscriptions for org ${organizationId}`);
     return count;
@@ -318,13 +347,18 @@ export class AsaasSyncService {
       for (const payment of batch) {
         await this.upsertInvoice(organizationId, payment);
         count++;
+        if (count % 10 === 0) {
+          await this.checkCancelled(integrationId);
+          const total = processedBefore + count;
+          await this.updateProgress(
+            integrationId,
+            this.calcProgress(total, grandTotal),
+            'payments',
+            `Sincronizando cobranças (${count}/${phaseTotal})...`,
+            this.calcEta(total, grandTotal),
+          );
+        }
       }
-      await this.updateProgress(
-        integrationId,
-        this.calcProgress(processedBefore + count, grandTotal),
-        'payments',
-        `Sincronizando cobranças (${count}/${phaseTotal})...`,
-      );
     }
     this.logger.log(`Synced ${count} payments for org ${organizationId}`);
     return count;
@@ -407,13 +441,18 @@ export class AsaasSyncService {
         if (!this.isOutgoingTransaction(transaction)) continue;
         await this.upsertExpense(organizationId, transaction, createdById);
         count++;
+        if (count % 10 === 0) {
+          await this.checkCancelled(integrationId);
+          const total = processedBefore + count;
+          await this.updateProgress(
+            integrationId,
+            this.calcProgress(total, grandTotal),
+            'expenses',
+            `Sincronizando despesas (${count}/${phaseTotal})...`,
+            this.calcEta(total, grandTotal),
+          );
+        }
       }
-      await this.updateProgress(
-        integrationId,
-        this.calcProgress(processedBefore + count, grandTotal),
-        'expenses',
-        `Sincronizando despesas (${count}/${phaseTotal})...`,
-      );
     }
     this.categoryCache.clear();
     this.logger.log(`Synced ${count} expenses for org ${organizationId}`);
@@ -457,16 +496,37 @@ export class AsaasSyncService {
 
   // ─── Invoice Sync ───────────────────────────────────────────────────
 
-  private async upsertInvoice(organizationId: string, payment: AsaasPayment) {
-    const company = await this.prisma.company.findFirst({
-      where: { organizationId, asaasCustomerId: payment.customer },
-    });
+  // Cache for company/contract lookups to avoid repeated DB queries
+  private companyCache = new Map<string, string | null>();
+  private contractCache = new Map<string, string | null>();
 
-    const contract = payment.subscription
-      ? await this.prisma.contract.findFirst({
-          where: { organizationId, asaasSubscriptionId: payment.subscription },
-        })
-      : null;
+  private async findCompanyId(organizationId: string, asaasCustomerId: string): Promise<string | undefined> {
+    const cacheKey = `${organizationId}:${asaasCustomerId}`;
+    if (this.companyCache.has(cacheKey)) return this.companyCache.get(cacheKey) || undefined;
+    const company = await this.prisma.company.findFirst({
+      where: { organizationId, asaasCustomerId },
+      select: { id: true },
+    });
+    this.companyCache.set(cacheKey, company?.id || null);
+    return company?.id || undefined;
+  }
+
+  private async findContractId(organizationId: string, asaasSubscriptionId: string): Promise<string | undefined> {
+    const cacheKey = `${organizationId}:${asaasSubscriptionId}`;
+    if (this.contractCache.has(cacheKey)) return this.contractCache.get(cacheKey) || undefined;
+    const contract = await this.prisma.contract.findFirst({
+      where: { organizationId, asaasSubscriptionId },
+      select: { id: true },
+    });
+    this.contractCache.set(cacheKey, contract?.id || null);
+    return contract?.id || undefined;
+  }
+
+  private async upsertInvoice(organizationId: string, payment: AsaasPayment) {
+    const companyId = await this.findCompanyId(organizationId, payment.customer);
+    const contractId = payment.subscription
+      ? await this.findContractId(organizationId, payment.subscription)
+      : undefined;
 
     const existing = await this.prisma.invoice.findFirst({
       where: { organizationId, asaasPaymentId: payment.id },
@@ -477,7 +537,7 @@ export class AsaasSyncService {
 
     const data = {
       status,
-      type: contract ? ('RECURRING' as const) : ('ONE_TIME' as const),
+      type: contractId ? ('RECURRING' as const) : ('ONE_TIME' as const),
       value: payment.value,
       totalValue: payment.value,
       dueDate: new Date(payment.dueDate),
@@ -490,8 +550,8 @@ export class AsaasSyncService {
       asaasInvoiceUrl: payment.invoiceUrl || undefined,
       asaasBankSlipUrl: payment.bankSlipUrl || undefined,
       asaasPixCode: payment.pixTransaction?.qrCode || undefined,
-      companyId: company?.id || undefined,
-      contractId: contract?.id || undefined,
+      companyId,
+      contractId,
     };
 
     if (existing) {

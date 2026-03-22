@@ -525,8 +525,8 @@ class ApiClient {
     return this.post<any>('/integrations/asaas', data);
   }
 
-  testAsaasConnection() {
-    return this.post<{ success: boolean; message: string }>('/integrations/asaas/test');
+  testAsaasConnection(data?: { apiKey: string; sandbox: boolean }) {
+    return this.post<{ success: boolean; message: string }>('/integrations/asaas/test', data);
   }
 
   triggerAsaasSync() {

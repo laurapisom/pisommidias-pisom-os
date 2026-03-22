@@ -895,7 +895,7 @@ export default function SettingsPage() {
                     setAsaasTesting(true);
                     setAsaasTestResult(null);
                     try {
-                      const result = await api.testAsaasConnection();
+                      const result = await api.testAsaasConnection({ apiKey: asaasApiKey, sandbox: asaasSandbox });
                       setAsaasTestResult(result);
                     } catch (err: any) {
                       setAsaasTestResult({ success: false, message: err.message || 'Erro ao testar conexão.' });
@@ -1016,7 +1016,7 @@ export default function SettingsPage() {
                           clearInterval(poll);
                           setAsaasSyncing(false);
                         }
-                      }, 3000);
+                      }, 2000);
                     } catch (err: any) {
                       setAsaasSyncError(err.message || 'Erro ao iniciar sincronização.');
                       setAsaasSyncing(false);
@@ -1029,12 +1029,13 @@ export default function SettingsPage() {
 
                 {asaasSyncStatus === 'syncing' && (
                   <button
-                    className="flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                    className="flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                     onClick={async () => {
                       try {
                         await api.cancelAsaasSync();
+                        setAsaasSyncDetail('Cancelando sincronização...');
                       } catch {
-                        // cancellation request failed
+                        setAsaasSyncError('Erro ao solicitar cancelamento.');
                       }
                     }}
                   >

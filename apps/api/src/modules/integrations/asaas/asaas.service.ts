@@ -100,11 +100,13 @@ export class AsaasService {
 
   async testConnection(apiKey: string, sandbox: boolean): Promise<boolean> {
     try {
-      await this.httpGet<AsaasListResponse<AsaasCustomer>>(
+      const res = await this.httpGet<AsaasListResponse<AsaasCustomer>>(
         '/customers?limit=1',
         apiKey,
         sandbox,
       );
+      // Validate response has expected structure (real Asaas response)
+      if (typeof res?.totalCount !== 'number') return false;
       return true;
     } catch (error) {
       this.logger.warn(`Asaas connection test failed: ${error.message}`);
