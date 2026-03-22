@@ -29,6 +29,12 @@ export class AccountsController {
     return this.accountsService.getSummary(user.organizationId);
   }
 
+  @Post(':id/link-asaas')
+  @ApiOperation({ summary: 'Vincular lançamentos do Asaas a esta conta' })
+  linkAsaas(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.accountsService.linkAsaasRecords(user.organizationId, id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalhes da conta' })
   findOne(@CurrentUser() user: any, @Param('id') id: string) {

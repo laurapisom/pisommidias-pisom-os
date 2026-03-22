@@ -133,6 +133,7 @@ export class AsaasSyncService {
 
       this.companyCache.clear();
       this.contractCache.clear();
+      this.asaasBankAccountId = undefined;
 
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -150,6 +151,7 @@ export class AsaasSyncService {
     } catch (error) {
       this.companyCache.clear();
       this.contractCache.clear();
+      this.asaasBankAccountId = undefined;
       const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -548,6 +550,7 @@ export class AsaasSyncService {
     const categoryId = await this.getOrCreateExpenseCategory(organizationId, categoryName);
     const absValue = Math.abs(transaction.value);
     const transactionDate = new Date(transaction.date);
+    const bankAccountId = await this.findAsaasBankAccountId(organizationId);
 
     const data = {
       title: transaction.description || `${categoryName} - ${transaction.id}`,
@@ -559,6 +562,7 @@ export class AsaasSyncService {
       supplier: 'Asaas',
       categoryId,
       asaasTransactionId: transaction.id,
+      bankAccountId,
       notes: transaction.paymentId ? `Ref. cobrança: ${transaction.paymentId}` : undefined,
     };
 
@@ -576,9 +580,27 @@ export class AsaasSyncService {
 
   // ─── Invoice Sync ───────────────────────────────────────────────────
 
-  // Cache for company/contract lookups to avoid repeated DB queries
+  // Cache for company/contract/bankAccount lookups to avoid repeated DB queries
   private companyCache = new Map<string, string | null>();
   private contractCache = new Map<string, string | null>();
+  private asaasBankAccountId: string | null | undefined = undefined;
+
+  private async findAsaasBankAccountId(organizationId: string): Promise<string | undefined> {
+    if (this.asaasBankAccountId !== undefined) return this.asaasBankAccountId || undefined;
+    const account = await this.prisma.bankAccount.findFirst({
+      where: {
+        organizationId,
+        isActive: true,
+        OR: [
+          { type: 'PAYMENT_GATEWAY' },
+          { name: { contains: 'asaas', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    this.asaasBankAccountId = account?.id || null;
+    return account?.id || undefined;
+  }
 
   private async findCompanyId(organizationId: string, asaasCustomerId: string): Promise<string | undefined> {
     const cacheKey = `${organizationId}:${asaasCustomerId}`;
@@ -607,6 +629,7 @@ export class AsaasSyncService {
     const contractId = payment.subscription
       ? await this.findContractId(organizationId, payment.subscription)
       : undefined;
+    const bankAccountId = await this.findAsaasBankAccountId(organizationId);
 
     const existing = await this.prisma.invoice.findFirst({
       where: { organizationId, asaasPaymentId: payment.id },
@@ -632,6 +655,7 @@ export class AsaasSyncService {
       asaasPixCode: payment.pixTransaction?.qrCode || undefined,
       companyId,
       contractId,
+      bankAccountId,
     };
 
     if (existing) {

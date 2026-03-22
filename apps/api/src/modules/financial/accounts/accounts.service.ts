@@ -117,6 +117,35 @@ export class AccountsService {
     });
   }
 
+  async linkAsaasRecords(organizationId: string, bankAccountId: string) {
+    const account = await this.prisma.bankAccount.findFirst({
+      where: { id: bankAccountId, organizationId },
+    });
+    if (!account) throw new NotFoundException('Conta não encontrada');
+
+    const [invoiceResult, expenseResult] = await Promise.all([
+      this.prisma.invoice.updateMany({
+        where: {
+          organizationId,
+          asaasPaymentId: { not: null },
+        },
+        data: { bankAccountId },
+      }),
+      this.prisma.expense.updateMany({
+        where: {
+          organizationId,
+          asaasTransactionId: { not: null },
+        },
+        data: { bankAccountId },
+      }),
+    ]);
+
+    return {
+      invoicesLinked: invoiceResult.count,
+      expensesLinked: expenseResult.count,
+    };
+  }
+
   private async calculateBalance(organizationId: string, accountId: string, initialBalance: number): Promise<number> {
     // Entradas: faturas pagas vinculadas a esta conta
     const paidInvoices = await this.prisma.invoice.aggregate({

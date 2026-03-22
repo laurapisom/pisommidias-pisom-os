@@ -576,6 +576,10 @@ class ApiClient {
   deleteAccount(id: string) {
     return this.delete<any>(`/financial/accounts/${id}`);
   }
+
+  linkAsaasToAccount(accountId: string) {
+    return this.post<{ invoicesLinked: number; expensesLinked: number }>(`/financial/accounts/${accountId}/link-asaas`);
+  }
 }
 
 export const api = new ApiClient();
