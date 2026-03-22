@@ -128,6 +128,7 @@ export class AuthService {
             name: membership.organization.name,
             slug: membership.organization.slug,
             role: membership.role,
+            modulePermissions: membership.modulePermissions || null,
           }
         : null,
     };

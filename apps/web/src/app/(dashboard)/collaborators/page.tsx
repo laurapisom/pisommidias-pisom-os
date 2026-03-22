@@ -62,11 +62,16 @@ export default function CollaboratorsPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Invite form
+  const defaultPerms: Record<string, boolean> = {};
+  SYSTEM_MODULES.forEach((m) => {
+    defaultPerms[m.key] = m.key === 'dashboard' || m.key === 'tasks';
+  });
   const [inviteForm, setInviteForm] = useState({
     email: '',
     firstName: '',
     lastName: '',
     role: 'MEMBER',
+    modulePermissions: { ...defaultPerms } as Record<string, boolean>,
   });
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState('');
@@ -98,13 +103,13 @@ export default function CollaboratorsPage() {
     setInviting(true);
     setInviteError('');
     try {
-      const defaultPerms: Record<string, boolean> = {};
-      SYSTEM_MODULES.forEach((m) => {
-        defaultPerms[m.key] = m.key === 'dashboard' || m.key === 'tasks';
-      });
-      await api.inviteMember({ ...inviteForm, modulePermissions: defaultPerms });
+      await api.inviteMember(inviteForm);
       setShowInvite(false);
-      setInviteForm({ email: '', firstName: '', lastName: '', role: 'MEMBER' });
+      const resetPerms: Record<string, boolean> = {};
+      SYSTEM_MODULES.forEach((m) => {
+        resetPerms[m.key] = m.key === 'dashboard' || m.key === 'tasks';
+      });
+      setInviteForm({ email: '', firstName: '', lastName: '', role: 'MEMBER', modulePermissions: { ...resetPerms } });
       await loadData();
     } catch (e: any) {
       setInviteError(e.message || 'Erro ao convidar');
@@ -276,6 +281,64 @@ export default function CollaboratorsPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Module Permissions */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Acesso aos Módulos</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {SYSTEM_MODULES.map((mod) => {
+                    const ModIcon = mod.icon;
+                    const isActive = inviteForm.modulePermissions[mod.key] ?? false;
+                    const isAdmin = inviteForm.role === 'ADMIN';
+                    return (
+                      <button
+                        key={mod.key}
+                        type="button"
+                        onClick={() => {
+                          if (!isAdmin) {
+                            setInviteForm({
+                              ...inviteForm,
+                              modulePermissions: {
+                                ...inviteForm.modulePermissions,
+                                [mod.key]: !isActive,
+                              },
+                            });
+                          }
+                        }}
+                        disabled={isAdmin}
+                        className={cn(
+                          'flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-left text-sm transition',
+                          isAdmin || isActive
+                            ? 'border-pisom-300 bg-pisom-50 text-gray-900'
+                            : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300',
+                          isAdmin && 'cursor-not-allowed opacity-70',
+                        )}
+                      >
+                        <div className={cn('rounded-md p-1', isAdmin || isActive ? mod.color : 'text-gray-300 bg-gray-100')}>
+                          <ModIcon className="h-4 w-4" />
+                        </div>
+                        <span className="flex-1 text-xs font-medium">{mod.label}</span>
+                        <div
+                          className={cn(
+                            'h-4 w-7 rounded-full transition relative',
+                            isAdmin || isActive ? 'bg-pisom-500' : 'bg-gray-300',
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform',
+                              isAdmin || isActive ? 'translate-x-3' : 'translate-x-0.5',
+                            )}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {inviteForm.role === 'ADMIN' && (
+                  <p className="mt-1 text-xs text-gray-400">Administradores têm acesso total.</p>
+                )}
               </div>
 
               {inviteError && (

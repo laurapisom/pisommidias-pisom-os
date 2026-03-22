@@ -29,11 +29,13 @@ import {
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
+// Each nav item has a moduleKey that maps to the user's modulePermissions
 const navItems = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleKey: 'dashboard' },
   {
     label: 'CRM',
     icon: Target,
+    moduleKey: 'crm',
     children: [
       { label: 'Pipeline', href: '/crm/pipeline', icon: Kanban },
       { label: 'Leads', href: '/crm/leads', icon: Users },
@@ -41,11 +43,12 @@ const navItems = [
       { label: 'Empresas', href: '/crm/companies', icon: Building2 },
     ],
   },
-  { label: 'Onboarding', href: '/onboarding', icon: ClipboardCheck },
-  { label: 'Tarefas', href: '/tasks', icon: CheckSquare },
+  { label: 'Onboarding', href: '/onboarding', icon: ClipboardCheck, moduleKey: 'onboarding' },
+  { label: 'Tarefas', href: '/tasks', icon: CheckSquare, moduleKey: 'tasks' },
   {
     label: 'Financeiro',
     icon: DollarSign,
+    moduleKey: 'financial',
     children: [
       { label: 'Visão Geral', href: '/financial', icon: TrendingUp },
       { label: 'Contas', href: '/financial/accounts', icon: Landmark },
@@ -57,7 +60,7 @@ const navItems = [
       { label: 'Fluxo de Caixa', href: '/financial/cashflow', icon: TrendingUp },
     ],
   },
-  { label: 'Colaboradores', href: '/collaborators', icon: UsersRound },
+  { label: 'Colaboradores', href: '/collaborators', icon: UsersRound, moduleKey: 'collaborators' },
 ];
 
 export function Sidebar() {
@@ -65,6 +68,8 @@ export function Sidebar() {
   const router = useRouter();
   const [orgName, setOrgName] = useState('Pisom OS');
   const [orgLogo, setOrgLogo] = useState('');
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<Record<string, boolean> | null>(null);
 
   useEffect(() => {
     // Load from cache first for instant render
@@ -75,6 +80,14 @@ export function Sidebar() {
           const data = JSON.parse(cached);
           if (data.name) setOrgName(data.name);
           if (data.logo) setOrgLogo(data.logo);
+        } catch { /* ignore */ }
+      }
+      const cachedPerms = localStorage.getItem('pisom_user_permissions');
+      if (cachedPerms) {
+        try {
+          const data = JSON.parse(cachedPerms);
+          if (data.role) setUserRole(data.role);
+          if (data.permissions) setPermissions(data.permissions);
         } catch { /* ignore */ }
       }
     }
@@ -88,6 +101,12 @@ export function Sidebar() {
         setOrgLogo(brandData.logo);
         localStorage.setItem('pisom_org_brand', JSON.stringify(brandData));
       }
+      // Save permissions
+      const role = me.role || 'MEMBER';
+      const perms = me.modulePermissions || {};
+      setUserRole(role);
+      setPermissions(perms);
+      localStorage.setItem('pisom_user_permissions', JSON.stringify({ role, permissions: perms }));
     }).catch(() => { /* ignore */ });
   }, []);
 
@@ -126,8 +145,24 @@ export function Sidebar() {
   const handleLogout = () => {
     api.clearToken();
     localStorage.removeItem('pisom_org_brand');
+    localStorage.removeItem('pisom_user_permissions');
     router.push('/login');
   };
+
+  // OWNER and ADMIN always see everything
+  const isFullAccess = userRole === 'OWNER' || userRole === 'ADMIN';
+
+  function hasModuleAccess(moduleKey: string): boolean {
+    if (isFullAccess) return true;
+    if (!permissions) return true; // While loading, show all
+    return permissions[moduleKey] === true;
+  }
+
+  // Filter nav items based on permissions
+  const filteredNavItems = navItems.filter((item) => hasModuleAccess(item.moduleKey));
+
+  // Check if user has settings access
+  const hasSettingsAccess = isFullAccess || (permissions?.settings === true);
 
   return (
     <aside className="fixed left-0 top-0 z-30 flex h-full w-[260px] flex-col border-r border-gray-200 bg-white">
@@ -147,8 +182,8 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto p-3 scrollbar-thin">
-        {navItems.map((item) => {
-          if ('children' in item) {
+        {filteredNavItems.map((item) => {
+          if ('children' in item && item.children) {
             const isActive = item.children.some((c) => pathname === c.href || pathname.startsWith(c.href + '/'));
             return (
               <div key={item.label} className="mb-1">
@@ -185,11 +220,11 @@ export function Sidebar() {
 
           return (
             <Link
-              key={item.href}
-              href={item.href!}
+              key={(item as any).href}
+              href={(item as any).href!}
               className={cn(
                 'mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition',
-                pathname === item.href || pathname.startsWith(item.href! + '/')
+                pathname === (item as any).href || pathname.startsWith((item as any).href! + '/')
                   ? 'bg-pisom-50 font-medium text-pisom-700'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
               )}
@@ -202,13 +237,15 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-gray-200 p-3">
-        <Link
-          href="/settings"
-          className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
-        >
-          <Settings className="h-5 w-5" />
-          Configurações
-        </Link>
+        {hasSettingsAccess && (
+          <Link
+            href="/settings"
+            className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
+          >
+            <Settings className="h-5 w-5" />
+            Configurações
+          </Link>
+        )}
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 transition hover:bg-red-50"
