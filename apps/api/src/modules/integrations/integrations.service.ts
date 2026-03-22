@@ -18,23 +18,13 @@ export class IntegrationsService {
 
     if (!integration) return null;
 
-    return {
-      ...integration,
-      apiKey: integration.apiKey
-        ? `****${integration.apiKey.slice(-4)}`
-        : '',
-    };
+    return integration;
   }
 
   async saveAsaasIntegration(
     organizationId: string,
     data: { apiKey: string; sandbox: boolean },
   ) {
-    const updateData: Record<string, any> = { sandbox: data.sandbox };
-    if (!data.apiKey.startsWith('****')) {
-      updateData.apiKey = data.apiKey;
-    }
-
     return this.prisma.integration.upsert({
       where: { organizationId_provider: { organizationId, provider: 'asaas' } },
       create: {
@@ -45,7 +35,10 @@ export class IntegrationsService {
         isActive: true,
         syncStatus: 'idle',
       },
-      update: updateData,
+      update: {
+        apiKey: data.apiKey,
+        sandbox: data.sandbox,
+      },
     });
   }
 

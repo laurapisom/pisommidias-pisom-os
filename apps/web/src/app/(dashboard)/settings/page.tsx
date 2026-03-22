@@ -148,7 +148,7 @@ export default function SettingsPage() {
         ]);
         if (settings) {
           setAsaasApiKey(settings.apiKey || '');
-          setAsaasKeyMasked(settings.apiKey?.startsWith('****') ?? false);
+          setAsaasKeyMasked(false);
           setAsaasSandbox(settings.sandbox ?? true);
         }
         setAsaasSyncStatus(status.syncStatus);
@@ -836,15 +836,8 @@ export default function SettingsPage() {
                     className={inputClass}
                     placeholder="Insira sua API Key do Asaas"
                     value={asaasApiKey}
-                    onFocus={() => {
-                      if (asaasKeyMasked) {
-                        setAsaasApiKey('');
-                        setAsaasKeyMasked(false);
-                      }
-                    }}
                     onChange={(e) => {
                       setAsaasApiKey(e.target.value);
-                      setAsaasKeyMasked(false);
                       setAsaasTestResult(null);
                     }}
                   />
