@@ -226,7 +226,7 @@ export class AsaasSyncService {
           await this.upsertCompany(organizationId, customer);
           count++;
         }
-        if (checked % 10 === 0) {
+        if (checked % 50 === 0) {
           await this.checkCancelled(integrationId);
           const total = processedBefore + checked;
           await this.updateProgress(
@@ -316,7 +316,7 @@ export class AsaasSyncService {
           await this.upsertContract(organizationId, sub);
           count++;
         }
-        if (checked % 10 === 0) {
+        if (checked % 50 === 0) {
           await this.checkCancelled(integrationId);
           const total = processedBefore + checked;
           await this.updateProgress(
@@ -406,7 +406,7 @@ export class AsaasSyncService {
           await this.upsertInvoice(organizationId, payment);
           newCount++;
         }
-        if (checked % 10 === 0) {
+        if (checked % 50 === 0) {
           await this.checkCancelled(integrationId);
           const total = processedBefore + checked;
           const parts = [];
@@ -519,7 +519,7 @@ export class AsaasSyncService {
           await this.upsertExpense(organizationId, transaction, createdById);
           count++;
         }
-        if (checked % 10 === 0) {
+        if (checked % 50 === 0) {
           await this.checkCancelled(integrationId);
           const total = processedBefore + checked;
           await this.updateProgress(
