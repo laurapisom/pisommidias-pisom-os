@@ -7,6 +7,8 @@ import { ExpensesService } from './expenses/expenses.service';
 import { ExpensesController } from './expenses/expenses.controller';
 import { CashflowService } from './cashflow/cashflow.service';
 import { CashflowController } from './cashflow/cashflow.controller';
+import { AccountsService } from './accounts/accounts.service';
+import { AccountsController } from './accounts/accounts.controller';
 
 @Module({
   controllers: [
@@ -14,13 +16,15 @@ import { CashflowController } from './cashflow/cashflow.controller';
     InvoicesController,
     ExpensesController,
     CashflowController,
+    AccountsController,
   ],
   providers: [
     ContractsService,
     InvoicesService,
     ExpensesService,
     CashflowService,
+    AccountsService,
   ],
-  exports: [ContractsService, InvoicesService, ExpensesService, CashflowService],
+  exports: [ContractsService, InvoicesService, ExpensesService, CashflowService, AccountsService],
 })
 export class FinancialModule {}

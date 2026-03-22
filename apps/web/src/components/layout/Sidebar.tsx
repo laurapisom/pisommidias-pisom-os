@@ -25,6 +25,7 @@ import {
   Calendar,
   Lightbulb,
   UserCog,
+  Landmark,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -58,6 +59,7 @@ const navItems = [
     icon: DollarSign,
     children: [
       { label: 'Visão Geral', href: '/financial', icon: TrendingUp },
+      { label: 'Contas', href: '/financial/accounts', icon: Landmark },
       { label: 'Contratos', href: '/financial/contracts', icon: FileText },
       { label: 'Faturas', href: '/financial/invoices', icon: Receipt },
       { label: 'Despesas', href: '/financial/expenses', icon: CreditCard },

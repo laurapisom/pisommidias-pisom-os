@@ -551,6 +551,31 @@ class ApiClient {
   deleteAsaasIntegration() {
     return this.delete<any>('/integrations/asaas');
   }
+
+  // Bank Accounts
+  getAccounts() {
+    return this.get<any>('/financial/accounts');
+  }
+
+  getAccountsSummary() {
+    return this.get<any>('/financial/accounts/summary');
+  }
+
+  getAccount(id: string) {
+    return this.get<any>(`/financial/accounts/${id}`);
+  }
+
+  createAccount(data: any) {
+    return this.post<any>('/financial/accounts', data);
+  }
+
+  updateAccount(id: string, data: any) {
+    return this.patch<any>(`/financial/accounts/${id}`, data);
+  }
+
+  deleteAccount(id: string) {
+    return this.delete<any>(`/financial/accounts/${id}`);
+  }
 }
 
 export const api = new ApiClient();
