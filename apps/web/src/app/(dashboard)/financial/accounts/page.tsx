@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, Pencil, Trash2, X, Landmark, Wallet, CreditCard, Banknote, PiggyBank, Star, TrendingUp, TrendingDown, ArrowUpDown, Link2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Landmark, Wallet, CreditCard, Banknote, PiggyBank, Star, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
 
 const typeConfig: Record<string, { label: string; icon: any }> = {
   CHECKING: { label: 'Conta Corrente', icon: Landmark },
@@ -29,23 +29,6 @@ export default function AccountsPage() {
     initialBalance: '', color: '#6366f1', isDefault: false,
   });
   const [saving, setSaving] = useState(false);
-  const [linking, setLinking] = useState<string | null>(null);
-
-  const handleLinkAsaas = async (accountId: string) => {
-    if (!confirm('Vincular todas as faturas e despesas do Asaas a esta conta?')) return;
-    setLinking(accountId);
-    try {
-      const result = await api.linkAsaasToAccount(accountId);
-      const parts = [`${result.invoicesLinked} faturas na conta Asaas`, `${result.expensesLinked} despesas na conta Asaas`];
-      if (result.cashInvoicesLinked > 0) parts.push(`${result.cashInvoicesLinked} faturas em dinheiro na conta Caixa`);
-      alert(`Vinculados:\n${parts.join('\n')}`);
-      load();
-    } catch (err: any) {
-      alert(err.message || 'Erro ao vincular');
-    } finally {
-      setLinking(null);
-    }
-  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -271,18 +254,6 @@ export default function AccountsPage() {
                       {account.agency && ` | Ag: ${account.agency}`}
                       {account.accountNumber && ` | CC: ${account.accountNumber}`}
                     </p>
-                  )}
-
-                  {/* Link Asaas button */}
-                  {(account.type === 'PAYMENT_GATEWAY' || account.name.toLowerCase().includes('asaas')) && (
-                    <button
-                      onClick={() => handleLinkAsaas(account.id)}
-                      disabled={linking === account.id}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 transition mb-3"
-                    >
-                      <Link2 className="h-3.5 w-3.5" />
-                      {linking === account.id ? 'Vinculando...' : 'Vincular lançamentos Asaas'}
-                    </button>
                   )}
 
                   {/* Balance */}
