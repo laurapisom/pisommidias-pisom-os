@@ -203,29 +203,46 @@ export class AsaasSyncService {
     organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
     grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
   ): Promise<number> {
+    // Pré-carregar IDs já sincronizados para pular duplicados
+    const existingIds = new Set(
+      (await this.prisma.company.findMany({
+        where: { organizationId, asaasCustomerId: { not: null } },
+        select: { asaasCustomerId: true },
+      })).map(c => c.asaasCustomerId),
+    );
+
     let count = 0;
-    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'customers', `Sincronizando clientes (0/${phaseTotal})...`);
+    let skipped = 0;
+    let checked = 0;
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'customers', `Verificando clientes (${existingIds.size} já sincronizados)...`);
 
     for await (const batch of this.asaasService.fetchAllCustomers(apiKey, sandbox, dateFilter)) {
       await this.checkCancelled(integrationId);
       for (const customer of batch) {
-        await this.upsertCompany(organizationId, customer);
-        count++;
-        if (count % 10 === 0) {
+        checked++;
+        if (existingIds.has(customer.id)) {
+          skipped++;
+        } else {
+          await this.upsertCompany(organizationId, customer);
+          count++;
+        }
+        if (checked % 10 === 0) {
           await this.checkCancelled(integrationId);
-          const total = processedBefore + count;
+          const total = processedBefore + checked;
           await this.updateProgress(
             integrationId,
             this.calcProgress(total, grandTotal),
             'customers',
-            `Sincronizando clientes (${count}/${phaseTotal})...`,
+            count > 0
+              ? `Sincronizando clientes (${count} novos, ${skipped} já existentes)...`
+              : `Verificando clientes (${checked}/${phaseTotal}, ${skipped} já existentes)...`,
             this.calcEta(total, grandTotal),
           );
         }
       }
     }
-    this.logger.log(`Synced ${count} customers for org ${organizationId}`);
-    return count;
+    this.logger.log(`Customers: ${count} new, ${skipped} skipped for org ${organizationId}`);
+    return checked; // retorna total verificado para progresso correto
   }
 
   private async upsertCompany(organizationId: string, customer: AsaasCustomer) {
@@ -276,29 +293,46 @@ export class AsaasSyncService {
     organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
     grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
   ): Promise<number> {
+    // Pré-carregar IDs já sincronizados
+    const existingIds = new Set(
+      (await this.prisma.contract.findMany({
+        where: { organizationId, asaasSubscriptionId: { not: null } },
+        select: { asaasSubscriptionId: true },
+      })).map(c => c.asaasSubscriptionId),
+    );
+
     let count = 0;
-    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'subscriptions', `Sincronizando assinaturas (0/${phaseTotal})...`);
+    let skipped = 0;
+    let checked = 0;
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'subscriptions', `Verificando assinaturas (${existingIds.size} já sincronizadas)...`);
 
     for await (const batch of this.asaasService.fetchAllSubscriptions(apiKey, sandbox, dateFilter)) {
       await this.checkCancelled(integrationId);
       for (const sub of batch) {
-        await this.upsertContract(organizationId, sub);
-        count++;
-        if (count % 10 === 0) {
+        checked++;
+        if (existingIds.has(sub.id)) {
+          skipped++;
+        } else {
+          await this.upsertContract(organizationId, sub);
+          count++;
+        }
+        if (checked % 10 === 0) {
           await this.checkCancelled(integrationId);
-          const total = processedBefore + count;
+          const total = processedBefore + checked;
           await this.updateProgress(
             integrationId,
             this.calcProgress(total, grandTotal),
             'subscriptions',
-            `Sincronizando assinaturas (${count}/${phaseTotal})...`,
+            count > 0
+              ? `Sincronizando assinaturas (${count} novas, ${skipped} já existentes)...`
+              : `Verificando assinaturas (${checked}/${phaseTotal}, ${skipped} já existentes)...`,
             this.calcEta(total, grandTotal),
           );
         }
       }
     }
-    this.logger.log(`Synced ${count} subscriptions for org ${organizationId}`);
-    return count;
+    this.logger.log(`Subscriptions: ${count} new, ${skipped} skipped for org ${organizationId}`);
+    return checked;
   }
 
   private async upsertContract(organizationId: string, sub: AsaasSubscription) {
@@ -339,29 +373,58 @@ export class AsaasSyncService {
     organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
     grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
   ): Promise<number> {
-    let count = 0;
-    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'payments', `Sincronizando cobranças (0/${phaseTotal})...`);
+    // Pré-carregar IDs e status já sincronizados
+    const existingPayments = new Map(
+      (await this.prisma.invoice.findMany({
+        where: { organizationId, asaasPaymentId: { not: null } },
+        select: { asaasPaymentId: true, status: true },
+      })).map(p => [p.asaasPaymentId, p.status] as const),
+    );
+    // Status finais que não precisam de atualização
+    const finalStatuses = new Set(['PAID', 'CANCELLED', 'REFUNDED']);
+
+    let newCount = 0;
+    let updatedCount = 0;
+    let skipped = 0;
+    let checked = 0;
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'payments', `Verificando cobranças (${existingPayments.size} já sincronizadas)...`);
 
     for await (const batch of this.asaasService.fetchAllPayments(apiKey, sandbox, dateFilter)) {
       await this.checkCancelled(integrationId);
       for (const payment of batch) {
-        await this.upsertInvoice(organizationId, payment);
-        count++;
-        if (count % 10 === 0) {
+        checked++;
+        const existingStatus = existingPayments.get(payment.id);
+        if (existingStatus) {
+          if (finalStatuses.has(existingStatus)) {
+            skipped++;
+          } else {
+            // Atualizar cobranças pendentes/vencidas (status pode ter mudado)
+            await this.upsertInvoice(organizationId, payment);
+            updatedCount++;
+          }
+        } else {
+          await this.upsertInvoice(organizationId, payment);
+          newCount++;
+        }
+        if (checked % 10 === 0) {
           await this.checkCancelled(integrationId);
-          const total = processedBefore + count;
+          const total = processedBefore + checked;
+          const parts = [];
+          if (newCount > 0) parts.push(`${newCount} novas`);
+          if (updatedCount > 0) parts.push(`${updatedCount} atualizadas`);
+          if (skipped > 0) parts.push(`${skipped} já finalizadas`);
           await this.updateProgress(
             integrationId,
             this.calcProgress(total, grandTotal),
             'payments',
-            `Sincronizando cobranças (${count}/${phaseTotal})...`,
+            `Cobranças (${checked}/${phaseTotal}): ${parts.join(', ') || 'verificando...'}`,
             this.calcEta(total, grandTotal),
           );
         }
       }
     }
-    this.logger.log(`Synced ${count} payments for org ${organizationId}`);
-    return count;
+    this.logger.log(`Payments: ${newCount} new, ${updatedCount} updated, ${skipped} skipped for org ${organizationId}`);
+    return checked;
   }
 
   // ─── Expense Sync (Asaas Financial Transactions) ─────────────────────
@@ -431,32 +494,49 @@ export class AsaasSyncService {
     organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
     grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
   ): Promise<number> {
+    // Pré-carregar IDs já sincronizados
+    const existingIds = new Set(
+      (await this.prisma.expense.findMany({
+        where: { organizationId, asaasTransactionId: { not: null } },
+        select: { asaasTransactionId: true },
+      })).map(e => e.asaasTransactionId),
+    );
+
     let count = 0;
+    let skipped = 0;
+    let checked = 0;
     const createdById = await this.getSystemUserId(organizationId);
-    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'expenses', `Sincronizando despesas (0/${phaseTotal})...`);
+    await this.updateProgress(integrationId, this.calcProgress(processedBefore, grandTotal), 'expenses', `Verificando despesas (${existingIds.size} já sincronizadas)...`);
 
     for await (const batch of this.asaasService.fetchAllFinancialTransactions(apiKey, sandbox, dateFilter)) {
       await this.checkCancelled(integrationId);
       for (const transaction of batch) {
         if (!this.isOutgoingTransaction(transaction)) continue;
-        await this.upsertExpense(organizationId, transaction, createdById);
-        count++;
-        if (count % 10 === 0) {
+        checked++;
+        if (existingIds.has(transaction.id)) {
+          skipped++;
+        } else {
+          await this.upsertExpense(organizationId, transaction, createdById);
+          count++;
+        }
+        if (checked % 10 === 0) {
           await this.checkCancelled(integrationId);
-          const total = processedBefore + count;
+          const total = processedBefore + checked;
           await this.updateProgress(
             integrationId,
             this.calcProgress(total, grandTotal),
             'expenses',
-            `Sincronizando despesas (${count}/${phaseTotal})...`,
+            count > 0
+              ? `Sincronizando despesas (${count} novas, ${skipped} já existentes)...`
+              : `Verificando despesas (${checked}/${phaseTotal}, ${skipped} já existentes)...`,
             this.calcEta(total, grandTotal),
           );
         }
       }
     }
     this.categoryCache.clear();
-    this.logger.log(`Synced ${count} expenses for org ${organizationId}`);
-    return count;
+    this.logger.log(`Expenses: ${count} new, ${skipped} skipped for org ${organizationId}`);
+    return checked;
   }
 
   private async upsertExpense(organizationId: string, transaction: AsaasFinancialTransaction, createdById: string) {
