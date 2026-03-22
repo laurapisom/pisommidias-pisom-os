@@ -36,7 +36,9 @@ export default function AccountsPage() {
     setLinking(accountId);
     try {
       const result = await api.linkAsaasToAccount(accountId);
-      alert(`Vinculados: ${result.invoicesLinked} faturas e ${result.expensesLinked} despesas`);
+      const parts = [`${result.invoicesLinked} faturas na conta Asaas`, `${result.expensesLinked} despesas na conta Asaas`];
+      if (result.cashInvoicesLinked > 0) parts.push(`${result.cashInvoicesLinked} faturas em dinheiro na conta Caixa`);
+      alert(`Vinculados:\n${parts.join('\n')}`);
       load();
     } catch (err: any) {
       alert(err.message || 'Erro ao vincular');

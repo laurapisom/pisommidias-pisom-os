@@ -128,15 +128,26 @@ export class AccountsService {
       where: {
         organizationId,
         isActive: true,
+        id: { not: bankAccountId },
         OR: [
           { type: 'CASH' },
           { name: { contains: 'caixa', mode: 'insensitive' } },
+          { name: { contains: 'dinheiro', mode: 'insensitive' } },
         ],
       },
       select: { id: true },
     });
 
-    // Faturas em dinheiro (UNDEFINED) → conta caixa (se existir)
+    // 1) Primeiro: todas as faturas Asaas → conta Asaas (gateway)
+    const invoiceResult = await this.prisma.invoice.updateMany({
+      where: {
+        organizationId,
+        asaasPaymentId: { not: null },
+      },
+      data: { bankAccountId },
+    });
+
+    // 2) Depois: sobrescrever as faturas em dinheiro → conta caixa
     let cashInvoicesLinked = 0;
     if (cashAccount) {
       const cashResult = await this.prisma.invoice.updateMany({
@@ -150,30 +161,17 @@ export class AccountsService {
       cashInvoicesLinked = cashResult.count;
     }
 
-    // Demais faturas do Asaas → conta Asaas
-    const [invoiceResult, expenseResult] = await Promise.all([
-      this.prisma.invoice.updateMany({
-        where: {
-          organizationId,
-          asaasPaymentId: { not: null },
-          OR: [
-            { paymentMethod: { not: 'UNDEFINED' } },
-            { paymentMethod: null },
-          ],
-        },
-        data: { bankAccountId },
-      }),
-      this.prisma.expense.updateMany({
-        where: {
-          organizationId,
-          asaasTransactionId: { not: null },
-        },
-        data: { bankAccountId },
-      }),
-    ]);
+    // 3) Despesas do Asaas → conta Asaas
+    const expenseResult = await this.prisma.expense.updateMany({
+      where: {
+        organizationId,
+        asaasTransactionId: { not: null },
+      },
+      data: { bankAccountId },
+    });
 
     return {
-      invoicesLinked: invoiceResult.count,
+      invoicesLinked: invoiceResult.count - cashInvoicesLinked,
       cashInvoicesLinked,
       expensesLinked: expenseResult.count,
     };
