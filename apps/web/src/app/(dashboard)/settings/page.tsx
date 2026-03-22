@@ -1039,6 +1039,7 @@ export default function SettingsPage() {
                   className={cn(btnPrimary, 'flex items-center gap-2')}
                   disabled={asaasSyncing || asaasSyncStatus === 'syncing'}
                   onClick={async () => {
+                    if (asaasSyncing) return; // Prevent multiple clicks
                     setAsaasSyncing(true);
                     setAsaasSyncError(null);
                     setAsaasSyncProgress(0);
@@ -1046,10 +1047,12 @@ export default function SettingsPage() {
                     try {
                       await api.triggerAsaasSync();
                       setAsaasSyncStatus('syncing');
-                      // Poll for status
+                      // Poll for status with error counter
+                      let pollErrors = 0;
                       const poll = setInterval(async () => {
                         try {
                           const status = await api.getAsaasSyncStatus();
+                          pollErrors = 0; // Reset on success
                           setAsaasSyncStatus(status.syncStatus);
                           setAsaasLastSync(status.lastSyncAt);
                           setAsaasSyncError(status.syncError);
@@ -1059,11 +1062,16 @@ export default function SettingsPage() {
                             clearInterval(poll);
                             setAsaasSyncing(false);
                           }
-                        } catch {
-                          clearInterval(poll);
-                          setAsaasSyncing(false);
+                        } catch (pollErr: any) {
+                          pollErrors++;
+                          if (pollErrors >= 5) {
+                            clearInterval(poll);
+                            setAsaasSyncing(false);
+                            setAsaasSyncStatus('error');
+                            setAsaasSyncError('Conexão perdida ao acompanhar sincronização. Verifique o status manualmente.');
+                          }
                         }
-                      }, 2000);
+                      }, 3000);
                     } catch (err: any) {
                       setAsaasSyncError(err.message || 'Erro ao iniciar sincronização.');
                       setAsaasSyncing(false);

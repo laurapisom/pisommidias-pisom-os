@@ -81,16 +81,56 @@ export class AsaasService {
     path: string,
     apiKey: string,
     sandbox: boolean,
+    retries = 3,
   ): Promise<T> {
     const url = `${this.getBaseUrl(sandbox)}${path}`;
-    const res = await fetch(url, {
-      headers: { access_token: apiKey },
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Asaas API error ${res.status}: ${body}`);
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        this.logger.warn(`Asaas API retry ${attempt}/${retries} after ${delay}ms for ${path}`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
+      try {
+        const res = await fetch(url, {
+          headers: { access_token: apiKey },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+          const body = await res.text();
+          const statusCode = res.status;
+          // Retry on 5xx or 429 (rate limit)
+          if ((statusCode >= 500 || statusCode === 429) && attempt < retries) {
+            lastError = new Error(`Asaas API error ${statusCode}: ${body}`);
+            continue;
+          }
+          throw new Error(`Asaas API error ${statusCode}: ${body.substring(0, 200)}`);
+        }
+        return res.json();
+      } catch (error) {
+        clearTimeout(timeout);
+        if (error.name === 'AbortError') {
+          lastError = new Error(`Asaas API timeout after 30s for ${path}`);
+          if (attempt < retries) continue;
+          throw lastError;
+        }
+        // Retry on network errors
+        if (error.code === 'ECONNRESET' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+          lastError = error;
+          if (attempt < retries) continue;
+        }
+        throw error;
+      }
     }
-    return res.json();
+
+    throw lastError || new Error(`Asaas API failed after ${retries} retries`);
   }
 
   private buildDateFilter(dateCreatedAfter?: string): string {

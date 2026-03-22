@@ -50,8 +50,15 @@ function mapPaymentStatus(status: string): InvoiceStatus {
     case 'CHARGEBACK_DISPUTE':
     case 'AWAITING_CHARGEBACK_REVERSAL':
       return 'REFUNDED';
-    default:
+    case 'DELETED':
+    case 'RESTORED':
+    case 'ARCHIVED':
+    case 'DUNNING_REQUESTED':
+    case 'DUNNING_RECEIVED':
       return 'CANCELLED';
+    default:
+      // Unknown status - default to PENDING so it can be reviewed, not silently cancelled
+      return 'PENDING';
   }
 }
 
@@ -64,6 +71,8 @@ export class AsaasSyncService {
     private asaasService: AsaasService,
   ) {}
 
+  private static readonly SYNC_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes max
+
   async syncAll(organizationId: string): Promise<{ customers: number; subscriptions: number; payments: number; expenses: number }> {
     const integration = await this.prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: 'asaas' } },
@@ -73,10 +82,26 @@ export class AsaasSyncService {
       throw new Error('Integração Asaas não encontrada ou inativa');
     }
 
+    // Clear caches at the start to prevent stale data from previous runs
+    this.companyCache.clear();
+    this.contractCache.clear();
+    this.categoryCache.clear();
+    this.asaasBankAccountId = undefined;
+    this.cashBankAccountId = undefined;
+
     await this.prisma.integration.update({
       where: { id: integration.id },
       data: { syncStatus: 'syncing', syncError: null, syncCancelled: false, syncProgress: 0, syncPhase: null, syncDetail: 'Iniciando sincronização...' },
     });
+
+    // Set up a global timeout to prevent infinite syncs
+    const syncTimeout = setTimeout(async () => {
+      this.logger.error(`Sync timeout after ${AsaasSyncService.SYNC_TIMEOUT_MS / 1000}s for org ${organizationId}`);
+      await this.prisma.integration.update({
+        where: { id: integration.id },
+        data: { syncCancelled: true },
+      });
+    }, AsaasSyncService.SYNC_TIMEOUT_MS);
 
     try {
       // Sync incremental: usa lastSyncAt para filtrar apenas dados novos/atualizados
@@ -86,15 +111,18 @@ export class AsaasSyncService {
 
       // Obter contagens totais para calcular progresso
       this.syncStartedAt = Date.now();
+      this.lastCancelCheck = 0;
       await this.updateProgress(integration.id, 0, 'counting', 'Calculando total de registros...');
 
       const customerTotal = await this.asaasService.getCount('customers', integration.apiKey, integration.sandbox, dateFilter);
       const subscriptionTotal = await this.asaasService.getCount('subscriptions', integration.apiKey, integration.sandbox, dateFilter);
       const paymentTotal = await this.asaasService.getCount('payments', integration.apiKey, integration.sandbox, dateFilter);
       let expenseTotal = 0;
+      let expenseSkipped = false;
       try {
         expenseTotal = await this.asaasService.getCount('financialTransactions', integration.apiKey, integration.sandbox, dateFilter);
       } catch {
+        expenseSkipped = true;
         this.logger.warn('Could not fetch financialTransactions count, skipping expense sync');
       }
       const grandTotal = customerTotal + subscriptionTotal + paymentTotal + expenseTotal;
@@ -133,8 +161,10 @@ export class AsaasSyncService {
 
       this.companyCache.clear();
       this.contractCache.clear();
+      this.categoryCache.clear();
       this.asaasBankAccountId = undefined;
       this.cashBankAccountId = undefined;
+      clearTimeout(syncTimeout);
 
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -144,14 +174,17 @@ export class AsaasSyncService {
           syncError: null,
           syncProgress: 100,
           syncPhase: 'done',
-          syncDetail: `Sincronização concluída: ${customerCount} clientes, ${subscriptionCount} assinaturas, ${paymentCount} cobranças, ${expenseCount} despesas`,
+          syncDetail: `Sincronização concluída: ${customerCount} clientes, ${subscriptionCount} assinaturas, ${paymentCount} cobranças, ${expenseCount} despesas${expenseSkipped ? ' (despesas ignoradas - sem permissão)' : ''}`,
         },
       });
 
+      this.logger.log(`Sync completed for org ${organizationId}: ${customerCount}C ${subscriptionCount}S ${paymentCount}P ${expenseCount}E`);
       return { customers: customerCount, subscriptions: subscriptionCount, payments: paymentCount, expenses: expenseCount };
     } catch (error) {
+      clearTimeout(syncTimeout);
       this.companyCache.clear();
       this.contractCache.clear();
+      this.categoryCache.clear();
       this.asaasBankAccountId = undefined;
       this.cashBankAccountId = undefined;
       const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
@@ -173,7 +206,14 @@ export class AsaasSyncService {
 
   private syncStartedAt: number = 0;
 
+  private lastCancelCheck = 0;
+  private static readonly CANCEL_CHECK_INTERVAL_MS = 5000; // Check DB at most every 5 seconds
+
   private async checkCancelled(integrationId: string): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastCancelCheck < AsaasSyncService.CANCEL_CHECK_INTERVAL_MS) return;
+    this.lastCancelCheck = now;
+
     const integration = await this.prisma.integration.findUnique({ where: { id: integrationId } });
     if (integration?.syncCancelled) {
       throw new Error('Sincronização cancelada pelo usuário');
@@ -194,9 +234,12 @@ export class AsaasSyncService {
 
   private calcEta(processed: number, grandTotal: number): string {
     if (processed <= 0 || grandTotal <= 0) return '';
-    const elapsed = (Date.now() - this.syncStartedAt) / 1000; // seconds
-    const rate = processed / elapsed; // items per second
+    const elapsed = (Date.now() - this.syncStartedAt) / 1000;
+    if (elapsed < 2) return ''; // Not enough data to estimate
+    const rate = processed / elapsed;
+    if (rate <= 0) return '';
     const remaining = grandTotal - processed;
+    if (remaining <= 0) return '';
     const etaSeconds = Math.ceil(remaining / rate);
     if (etaSeconds < 60) return `~${etaSeconds}s restantes`;
     if (etaSeconds < 3600) return `~${Math.ceil(etaSeconds / 60)}min restantes`;
