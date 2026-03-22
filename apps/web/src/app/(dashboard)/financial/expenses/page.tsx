@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Search, ChevronLeft, ChevronRight, Download, Copy } from 'lucide-react';
+import { Plus, CheckCircle2, XCircle, DollarSign, Pencil, X, Calendar, Tag, FolderOpen, Search, ChevronLeft, ChevronRight, Download, Copy, Trash2 } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
@@ -437,11 +437,19 @@ export default function ExpensesPage() {
             ) : (
               expenses.map((exp: any) => {
                 const st = statusConfig[exp.status] || statusConfig.PENDING;
+                const isFromAsaas = !!exp.asaasTransactionId;
                 return (
                   <tr key={exp.id} className="transition hover:bg-gray-50">
                     <td className="px-5 py-3">
-                      <p className="text-sm font-medium text-gray-900">{exp.title}</p>
-                      {exp.supplier && <p className="text-xs text-gray-500">{exp.supplier}</p>}
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{exp.title}</p>
+                          {exp.supplier && <p className="text-xs text-gray-500">{exp.supplier}</p>}
+                        </div>
+                        {isFromAsaas && (
+                          <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">Asaas</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3">
                       {exp.category ? (
@@ -459,32 +467,55 @@ export default function ExpensesPage() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex gap-1">
-                        {exp.status === 'PENDING' && (
+                        {isFromAsaas ? (
+                          /* Despesas do Asaas: somente duplicar */
+                          <button onClick={() => duplicateExpense(exp)} title="Duplicar para próx. mês" className="rounded p-1.5 text-gray-400 hover:bg-gray-100">
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        ) : (
                           <>
+                            {/* Despesas manuais: editar sempre disponível */}
                             <button onClick={() => openEdit(exp)} title="Editar" className="rounded p-1.5 text-gray-500 hover:bg-gray-100">
                               <Pencil className="h-4 w-4" />
                             </button>
-                            <button onClick={async () => { await api.approveExpense(exp.id); showToast('Despesa aprovada'); load(); }} title="Aprovar" className="rounded p-1.5 text-blue-600 hover:bg-blue-50">
-                              <CheckCircle2 className="h-4 w-4" />
+                            {/* Ações de workflow */}
+                            {exp.status === 'PENDING' && (
+                              <>
+                                <button onClick={async () => { await api.approveExpense(exp.id); showToast('Despesa aprovada'); load(); }} title="Aprovar" className="rounded p-1.5 text-blue-600 hover:bg-blue-50">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </button>
+                                <button onClick={async () => { await api.rejectExpense(exp.id); showToast('Despesa rejeitada'); load(); }} title="Rejeitar" className="rounded p-1.5 text-red-600 hover:bg-red-50">
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
+                            {exp.status === 'APPROVED' && (
+                              <button onClick={async () => { await api.payExpense(exp.id); showToast('Despesa paga'); load(); }} title="Pagar" className="rounded p-1.5 text-green-600 hover:bg-green-50">
+                                <DollarSign className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button onClick={() => duplicateExpense(exp)} title="Duplicar para próx. mês" className="rounded p-1.5 text-gray-400 hover:bg-gray-100">
+                              <Copy className="h-4 w-4" />
                             </button>
-                            <button onClick={async () => { await api.rejectExpense(exp.id); showToast('Despesa rejeitada'); load(); }} title="Rejeitar" className="rounded p-1.5 text-red-600 hover:bg-red-50">
-                              <XCircle className="h-4 w-4" />
+                            {/* Excluir — sempre disponível para despesas manuais */}
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Excluir despesa "${exp.title}"?`)) return;
+                                try {
+                                  await api.deleteExpense(exp.id);
+                                  showToast('Despesa excluída');
+                                  load();
+                                } catch (err: any) {
+                                  showToast(err.message || 'Erro ao excluir', 'error');
+                                }
+                              }}
+                              title="Excluir"
+                              className="rounded p-1.5 text-red-500 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </>
                         )}
-                        {exp.status === 'APPROVED' && (
-                          <>
-                            <button onClick={() => openEdit(exp)} title="Editar" className="rounded p-1.5 text-gray-500 hover:bg-gray-100">
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button onClick={async () => { await api.payExpense(exp.id); showToast('Despesa paga'); load(); }} title="Pagar" className="rounded p-1.5 text-green-600 hover:bg-green-50">
-                              <DollarSign className="h-4 w-4" />
-                            </button>
-                          </>
-                        )}
-                        <button onClick={() => duplicateExpense(exp)} title="Duplicar para próx. mês" className="rounded p-1.5 text-gray-400 hover:bg-gray-100">
-                          <Copy className="h-4 w-4" />
-                        </button>
                       </div>
                     </td>
                   </tr>

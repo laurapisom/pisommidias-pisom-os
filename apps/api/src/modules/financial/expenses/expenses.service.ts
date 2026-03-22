@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 
 @Injectable()
@@ -92,7 +92,10 @@ export class ExpensesService {
   }
 
   async update(organizationId: string, id: string, data: Record<string, any>) {
-    await this.ensureExists(organizationId, id);
+    const expense = await this.ensureExists(organizationId, id);
+    if (expense.asaasTransactionId) {
+      throw new BadRequestException('Despesas sincronizadas do Asaas não podem ser editadas');
+    }
     const updateData: any = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.value !== undefined) updateData.value = data.value;
@@ -221,7 +224,10 @@ export class ExpensesService {
   }
 
   async remove(organizationId: string, id: string) {
-    await this.ensureExists(organizationId, id);
+    const expense = await this.ensureExists(organizationId, id);
+    if (expense.asaasTransactionId) {
+      throw new BadRequestException('Despesas sincronizadas do Asaas não podem ser excluídas');
+    }
     await this.prisma.expense.delete({ where: { id } });
     return { message: 'Despesa excluída com sucesso' };
   }

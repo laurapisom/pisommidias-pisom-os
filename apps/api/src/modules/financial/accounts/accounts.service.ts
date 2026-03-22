@@ -123,11 +123,43 @@ export class AccountsService {
     });
     if (!account) throw new NotFoundException('Conta não encontrada');
 
+    // Buscar conta de caixa para faturas pagas em dinheiro
+    const cashAccount = await this.prisma.bankAccount.findFirst({
+      where: {
+        organizationId,
+        isActive: true,
+        OR: [
+          { type: 'CASH' },
+          { name: { contains: 'caixa', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    // Faturas em dinheiro (UNDEFINED) → conta caixa (se existir)
+    let cashInvoicesLinked = 0;
+    if (cashAccount) {
+      const cashResult = await this.prisma.invoice.updateMany({
+        where: {
+          organizationId,
+          asaasPaymentId: { not: null },
+          paymentMethod: 'UNDEFINED',
+        },
+        data: { bankAccountId: cashAccount.id },
+      });
+      cashInvoicesLinked = cashResult.count;
+    }
+
+    // Demais faturas do Asaas → conta Asaas
     const [invoiceResult, expenseResult] = await Promise.all([
       this.prisma.invoice.updateMany({
         where: {
           organizationId,
           asaasPaymentId: { not: null },
+          OR: [
+            { paymentMethod: { not: 'UNDEFINED' } },
+            { paymentMethod: null },
+          ],
         },
         data: { bankAccountId },
       }),
@@ -142,6 +174,7 @@ export class AccountsService {
 
     return {
       invoicesLinked: invoiceResult.count,
+      cashInvoicesLinked,
       expensesLinked: expenseResult.count,
     };
   }

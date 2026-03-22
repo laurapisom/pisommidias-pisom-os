@@ -134,6 +134,7 @@ export class AsaasSyncService {
       this.companyCache.clear();
       this.contractCache.clear();
       this.asaasBankAccountId = undefined;
+      this.cashBankAccountId = undefined;
 
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -152,6 +153,7 @@ export class AsaasSyncService {
       this.companyCache.clear();
       this.contractCache.clear();
       this.asaasBankAccountId = undefined;
+      this.cashBankAccountId = undefined;
       const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -584,6 +586,7 @@ export class AsaasSyncService {
   private companyCache = new Map<string, string | null>();
   private contractCache = new Map<string, string | null>();
   private asaasBankAccountId: string | null | undefined = undefined;
+  private cashBankAccountId: string | null | undefined = undefined;
 
   private async findAsaasBankAccountId(organizationId: string): Promise<string | undefined> {
     if (this.asaasBankAccountId !== undefined) return this.asaasBankAccountId || undefined;
@@ -599,6 +602,23 @@ export class AsaasSyncService {
       select: { id: true },
     });
     this.asaasBankAccountId = account?.id || null;
+    return account?.id || undefined;
+  }
+
+  private async findCashBankAccountId(organizationId: string): Promise<string | undefined> {
+    if (this.cashBankAccountId !== undefined) return this.cashBankAccountId || undefined;
+    const account = await this.prisma.bankAccount.findFirst({
+      where: {
+        organizationId,
+        isActive: true,
+        OR: [
+          { type: 'CASH' },
+          { name: { contains: 'caixa', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    this.cashBankAccountId = account?.id || null;
     return account?.id || undefined;
   }
 
@@ -629,7 +649,11 @@ export class AsaasSyncService {
     const contractId = payment.subscription
       ? await this.findContractId(organizationId, payment.subscription)
       : undefined;
-    const bankAccountId = await this.findAsaasBankAccountId(organizationId);
+    // Recebimentos em dinheiro (UNDEFINED) vão para o caixa físico, não para a conta Asaas
+    const isCashPayment = payment.billingType === 'UNDEFINED';
+    const bankAccountId = isCashPayment
+      ? await this.findCashBankAccountId(organizationId)
+      : await this.findAsaasBankAccountId(organizationId);
 
     const existing = await this.prisma.invoice.findFirst({
       where: { organizationId, asaasPaymentId: payment.id },
