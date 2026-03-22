@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -34,5 +34,35 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Resetar dados da organização seletivamente' })
   reset(@CurrentUser() user: any, @Body() body: ResetDataDto) {
     return this.orgService.resetData(user.organizationId, body);
+  }
+
+  // ---- Job Titles (Cargos) ----
+
+  @Get('job-titles')
+  @ApiOperation({ summary: 'Listar cargos da organização' })
+  getJobTitles(@CurrentUser() user: any) {
+    return this.orgService.getJobTitles(user.organizationId);
+  }
+
+  @Post('job-titles')
+  @ApiOperation({ summary: 'Criar cargo' })
+  createJobTitle(@CurrentUser() user: any, @Body() body: { name: string; description?: string }) {
+    return this.orgService.createJobTitle(user.organizationId, body);
+  }
+
+  @Patch('job-titles/:id')
+  @ApiOperation({ summary: 'Atualizar cargo' })
+  updateJobTitle(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() body: { name?: string; description?: string; isActive?: boolean },
+  ) {
+    return this.orgService.updateJobTitle(user.organizationId, id, body);
+  }
+
+  @Delete('job-titles/:id')
+  @ApiOperation({ summary: 'Excluir cargo' })
+  deleteJobTitle(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.orgService.deleteJobTitle(user.organizationId, id);
   }
 }

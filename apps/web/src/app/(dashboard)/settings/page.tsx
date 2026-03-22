@@ -40,6 +40,7 @@ const TABS = [
   { key: 'perfil', label: 'Perfil', icon: User },
   { key: 'organizacao', label: 'Organização', icon: Building2 },
   { key: 'equipe', label: 'Equipe', icon: Users },
+  { key: 'cargos', label: 'Cargos', icon: Shield },
   { key: 'integracoes', label: 'Integrações', icon: Puzzle },
   { key: 'resetar', label: 'Resetar Dados', icon: RotateCcw },
 ] as const;
@@ -102,6 +103,13 @@ export default function SettingsPage() {
   const [inviting, setInviting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
+  // Job Titles state
+  const [jobTitles, setJobTitles] = useState<any[]>([]);
+  const [jobTitleForm, setJobTitleForm] = useState({ name: '', description: '' });
+  const [jobTitleSaving, setJobTitleSaving] = useState(false);
+  const [editingJobTitle, setEditingJobTitle] = useState<string | null>(null);
+  const [editJobTitleForm, setEditJobTitleForm] = useState({ name: '', description: '' });
+
   // Reset state
   const [resetOptions, setResetOptions] = useState({
     financial: false,
@@ -159,6 +167,19 @@ export default function SettingsPage() {
   const [sicoobSyncProgress, setSicoobSyncProgress] = useState<number>(0);
   const [sicoobSyncDetail, setSicoobSyncDetail] = useState<string>('');
   const [sicoobShowSecret, setSicoobShowSecret] = useState(false);
+
+  // Load job titles when cargos tab is activated
+  useEffect(() => {
+    if (activeTab !== 'cargos') return;
+    (async () => {
+      try {
+        const titles = await api.getJobTitles();
+        setJobTitles(titles);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [activeTab]);
 
   // Load Asaas integration settings when tab is activated
   useEffect(() => {
@@ -854,6 +875,161 @@ export default function SettingsPage() {
               {team.length === 0 && (
                 <p className="py-8 text-center text-sm text-gray-500">
                   Nenhum membro encontrado.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'cargos' && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Cargos</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Gerencie os cargos da organização. Eles poderão ser atribuídos aos colaboradores no momento do cadastro.
+            </p>
+
+            {/* Add Job Title Form */}
+            <div className="flex items-end gap-3 mb-6">
+              <div className="flex-1">
+                <label className="mb-1 block text-sm font-medium text-gray-700">Nome do cargo</label>
+                <input
+                  type="text"
+                  value={jobTitleForm.name}
+                  onChange={(e) => setJobTitleForm({ ...jobTitleForm, name: e.target.value })}
+                  className={inputClass}
+                  placeholder="Ex: Designer, Desenvolvedor, Gerente de Projetos"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="mb-1 block text-sm font-medium text-gray-700">Descrição (opcional)</label>
+                <input
+                  type="text"
+                  value={jobTitleForm.description}
+                  onChange={(e) => setJobTitleForm({ ...jobTitleForm, description: e.target.value })}
+                  className={inputClass}
+                  placeholder="Breve descrição do cargo"
+                />
+              </div>
+              <button
+                onClick={async () => {
+                  if (!jobTitleForm.name.trim()) return;
+                  setJobTitleSaving(true);
+                  try {
+                    await api.createJobTitle({ name: jobTitleForm.name, description: jobTitleForm.description || undefined });
+                    setJobTitleForm({ name: '', description: '' });
+                    const titles = await api.getJobTitles();
+                    setJobTitles(titles);
+                  } catch {
+                    /* ignore */
+                  } finally {
+                    setJobTitleSaving(false);
+                  }
+                }}
+                disabled={jobTitleSaving || !jobTitleForm.name.trim()}
+                className={cn(btnPrimary, 'flex items-center gap-2 whitespace-nowrap')}
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar
+              </button>
+            </div>
+
+            {/* Job Titles List */}
+            <div className="divide-y divide-gray-100">
+              {jobTitles.map((jt) => (
+                <div key={jt.id} className="flex items-center gap-4 py-3">
+                  {editingJobTitle === jt.id ? (
+                    <>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={editJobTitleForm.name}
+                          onChange={(e) => setEditJobTitleForm({ ...editJobTitleForm, name: e.target.value })}
+                          className={inputClass}
+                          placeholder="Nome do cargo"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={editJobTitleForm.description}
+                          onChange={(e) => setEditJobTitleForm({ ...editJobTitleForm, description: e.target.value })}
+                          className={inputClass}
+                          placeholder="Descrição"
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!editJobTitleForm.name.trim()) return;
+                          setJobTitleSaving(true);
+                          try {
+                            await api.updateJobTitle(jt.id, { name: editJobTitleForm.name, description: editJobTitleForm.description || undefined });
+                            setEditingJobTitle(null);
+                            const titles = await api.getJobTitles();
+                            setJobTitles(titles);
+                          } catch {
+                            /* ignore */
+                          } finally {
+                            setJobTitleSaving(false);
+                          }
+                        }}
+                        disabled={jobTitleSaving}
+                        className="rounded-lg bg-emerald-100 p-2 text-emerald-600 hover:bg-emerald-200 transition"
+                        title="Salvar"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setEditingJobTitle(null)}
+                        className="rounded-lg bg-gray-100 p-2 text-gray-500 hover:bg-gray-200 transition"
+                        title="Cancelar"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900">{jt.name}</p>
+                        {jt.description && <p className="text-sm text-gray-500 truncate">{jt.description}</p>}
+                      </div>
+                      {!jt.isActive && (
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Inativo</span>
+                      )}
+                      <button
+                        onClick={() => {
+                          setEditingJobTitle(jt.id);
+                          setEditJobTitleForm({ name: jt.name, description: jt.description || '' });
+                        }}
+                        className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
+                        title="Editar"
+                      >
+                        <FileText className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Tem certeza que deseja excluir este cargo?')) return;
+                          try {
+                            await api.deleteJobTitle(jt.id);
+                            const titles = await api.getJobTitles();
+                            setJobTitles(titles);
+                          } catch {
+                            /* ignore */
+                          }
+                        }}
+                        className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
+                        title="Excluir"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+              {jobTitles.length === 0 && (
+                <p className="py-8 text-center text-sm text-gray-500">
+                  Nenhum cargo cadastrado. Adicione cargos para atribuir aos colaboradores.
                 </p>
               )}
             </div>

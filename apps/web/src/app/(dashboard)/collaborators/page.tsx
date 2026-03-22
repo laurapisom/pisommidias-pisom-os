@@ -24,6 +24,8 @@ import {
   CheckSquare,
   DollarSign,
   Settings,
+  Phone,
+  Briefcase,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -43,12 +45,19 @@ const SYSTEM_MODULES = [
 const ROLE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
   OWNER: { label: 'Proprietário', icon: Crown, color: 'text-amber-700 bg-amber-100' },
   ADMIN: { label: 'Administrador', icon: ShieldCheck, color: 'text-red-700 bg-red-100' },
-  MANAGER: { label: 'Gerente', icon: ShieldAlert, color: 'text-blue-700 bg-blue-100' },
+  MANAGER: { label: 'Gestor', icon: ShieldAlert, color: 'text-blue-700 bg-blue-100' },
   MEMBER: { label: 'Membro', icon: Shield, color: 'text-gray-700 bg-gray-100' },
   VIEWER: { label: 'Visualizador', icon: Eye, color: 'text-gray-500 bg-gray-50' },
 };
 
-const ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'MEMBER', 'VIEWER'];
+// Tipo de Acesso options for invite/edit (OWNER not selectable)
+const ACCESS_TYPES = [
+  { value: 'ADMIN', label: 'Administrador' },
+  { value: 'MANAGER', label: 'Gestor' },
+  { value: 'MEMBER', label: 'Membro' },
+];
+
+const ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'MEMBER'];
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -62,6 +71,9 @@ export default function CollaboratorsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
+  // Job titles
+  const [jobTitles, setJobTitles] = useState<any[]>([]);
+
   // Invite form
   const defaultPerms: Record<string, boolean> = {};
   SYSTEM_MODULES.forEach((m) => {
@@ -71,8 +83,10 @@ export default function CollaboratorsPage() {
     email: '',
     firstName: '',
     lastName: '',
+    phone: '',
     password: '',
     role: 'MEMBER',
+    jobTitleId: '',
     modulePermissions: { ...defaultPerms } as Record<string, boolean>,
   });
   const [inviting, setInviting] = useState(false);
@@ -92,9 +106,10 @@ export default function CollaboratorsPage() {
 
   async function loadData() {
     try {
-      const [team, me] = await Promise.all([api.getTeam(), api.getMe()]);
+      const [team, me, titles] = await Promise.all([api.getTeam(), api.getMe(), api.getJobTitles()]);
       setMembers(team);
       setCurrentUser(me);
+      setJobTitles(titles);
     } catch {
       /* ignore */
     } finally {
@@ -114,13 +129,16 @@ export default function CollaboratorsPage() {
     setInviting(true);
     setInviteError('');
     try {
-      await api.inviteMember(inviteForm);
+      const payload: any = { ...inviteForm };
+      if (!payload.jobTitleId) delete payload.jobTitleId;
+      if (!payload.phone) delete payload.phone;
+      await api.inviteMember(payload);
       setShowInvite(false);
       const resetPerms: Record<string, boolean> = {};
       SYSTEM_MODULES.forEach((m) => {
         resetPerms[m.key] = m.key === 'dashboard' || m.key === 'tasks';
       });
-      setInviteForm({ email: '', firstName: '', lastName: '', password: '', role: 'MEMBER', modulePermissions: { ...resetPerms } });
+      setInviteForm({ email: '', firstName: '', lastName: '', phone: '', password: '', role: 'MEMBER', jobTitleId: '', modulePermissions: { ...resetPerms } });
       await loadData();
     } catch (e: any) {
       setInviteError(e.message || 'Erro ao convidar');
@@ -298,6 +316,16 @@ export default function CollaboratorsPage() {
                 </div>
               </div>
               <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Telefone</label>
+                <input
+                  type="tel"
+                  value={inviteForm.phone}
+                  onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:ring-1 focus:ring-pisom-500"
+                  placeholder="(00) 00000-0000"
+                />
+              </div>
+              <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Senha de Acesso</label>
                 <input
                   type="text"
@@ -308,19 +336,36 @@ export default function CollaboratorsPage() {
                 />
                 <p className="mt-1 text-xs text-gray-400">Informe essa senha ao colaborador para o primeiro acesso.</p>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Cargo</label>
-                <select
-                  value={inviteForm.role}
-                  onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:ring-1 focus:ring-pisom-500"
-                >
-                  {ROLES.filter((r) => r !== 'OWNER').map((role) => (
-                    <option key={role} value={role}>
-                      {ROLE_CONFIG[role].label}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Tipo de Acesso</label>
+                  <select
+                    value={inviteForm.role}
+                    onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:ring-1 focus:ring-pisom-500"
+                  >
+                    {ACCESS_TYPES.map((at) => (
+                      <option key={at.value} value={at.value}>
+                        {at.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Cargo</label>
+                  <select
+                    value={inviteForm.jobTitleId}
+                    onChange={(e) => setInviteForm({ ...inviteForm, jobTitleId: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:ring-1 focus:ring-pisom-500"
+                  >
+                    <option value="">Sem cargo</option>
+                    {jobTitles.filter((jt) => jt.isActive !== false).map((jt) => (
+                      <option key={jt.id} value={jt.id}>
+                        {jt.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Module Permissions */}
@@ -499,6 +544,20 @@ export default function CollaboratorsPage() {
                     )}
                   </div>
                   <p className="text-sm text-gray-500 truncate">{member.user.email}</p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    {member.jobTitle && (
+                      <span className="flex items-center gap-1 text-xs text-gray-400">
+                        <Briefcase className="h-3 w-3" />
+                        {member.jobTitle.name}
+                      </span>
+                    )}
+                    {member.user.phone && (
+                      <span className="flex items-center gap-1 text-xs text-gray-400">
+                        <Phone className="h-3 w-3" />
+                        {member.user.phone}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Role Badge */}
@@ -514,9 +573,9 @@ export default function CollaboratorsPage() {
                           roleConfig.color,
                         )}
                       >
-                        {ROLES.filter((r) => r !== 'OWNER').map((role) => (
-                          <option key={role} value={role}>
-                            {ROLE_CONFIG[role].label}
+                        {ACCESS_TYPES.map((at) => (
+                          <option key={at.value} value={at.value}>
+                            {at.label}
                           </option>
                         ))}
                       </select>

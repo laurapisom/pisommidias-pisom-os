@@ -42,6 +42,7 @@ model Organization {
   internalTransfers   InternalTransfer[]
   ddaBills            DdaBill[]
   scheduledPayments   ScheduledPayment[]
+  jobTitles           JobTitle[]
 
   @@map("organizations")
 }
@@ -111,12 +112,14 @@ model OrganizationMember {
   organizationId String
   userId         String
   role           OrgRole  @default(MEMBER)
+  jobTitleId     String?
   modulePermissions Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobTitle     JobTitle?    @relation(fields: [jobTitleId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, userId])
   @@map("organization_members")
@@ -157,6 +160,22 @@ model TeamMember {
 
   @@unique([teamId, userId])
   @@map("team_members")
+}
+
+model JobTitle {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      OrganizationMember[]
+
+  @@unique([organizationId, name])
+  @@map("job_titles")
 }
 
 model AuditLog {

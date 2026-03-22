@@ -425,6 +425,23 @@ class ApiClient {
     return this.post<{ message: string; deleted: Record<string, number> }>('/organizations/reset', options);
   }
 
+  // Job Titles (Cargos)
+  getJobTitles() {
+    return this.get<any[]>('/organizations/job-titles');
+  }
+
+  createJobTitle(data: { name: string; description?: string }) {
+    return this.post<any>('/organizations/job-titles', data);
+  }
+
+  updateJobTitle(id: string, data: { name?: string; description?: string; isActive?: boolean }) {
+    return this.patch<any>(`/organizations/job-titles/${id}`, data);
+  }
+
+  deleteJobTitle(id: string) {
+    return this.delete<any>(`/organizations/job-titles/${id}`);
+  }
+
   inviteMember(data: any) {
     return this.post<any>('/users/invite', data);
   }

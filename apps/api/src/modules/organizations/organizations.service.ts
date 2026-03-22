@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 export interface ResetOptions {
@@ -178,5 +178,50 @@ export class OrganizationsService {
     });
 
     return { message: 'Dados resetados com sucesso', deleted };
+  }
+
+  // ---- Job Titles (Cargos) ----
+
+  async getJobTitles(organizationId: string) {
+    return this.prisma.jobTitle.findMany({
+      where: { organizationId },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createJobTitle(organizationId: string, data: { name: string; description?: string }) {
+    if (!data.name?.trim()) throw new BadRequestException('Nome do cargo é obrigatório');
+    return this.prisma.jobTitle.create({
+      data: {
+        organizationId,
+        name: data.name.trim(),
+        description: data.description?.trim() || null,
+      },
+    });
+  }
+
+  async updateJobTitle(organizationId: string, id: string, data: { name?: string; description?: string; isActive?: boolean }) {
+    const jt = await this.prisma.jobTitle.findFirst({ where: { id, organizationId } });
+    if (!jt) throw new NotFoundException('Cargo não encontrado');
+    return this.prisma.jobTitle.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.description !== undefined && { description: data.description.trim() || null }),
+        ...(data.isActive !== undefined && { isActive: data.isActive }),
+      },
+    });
+  }
+
+  async deleteJobTitle(organizationId: string, id: string) {
+    const jt = await this.prisma.jobTitle.findFirst({ where: { id, organizationId } });
+    if (!jt) throw new NotFoundException('Cargo não encontrado');
+    // Set null on members using this job title
+    await this.prisma.organizationMember.updateMany({
+      where: { jobTitleId: id },
+      data: { jobTitleId: null },
+    });
+    await this.prisma.jobTitle.delete({ where: { id } });
+    return { success: true };
   }
 }

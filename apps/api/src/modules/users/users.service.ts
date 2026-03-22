@@ -75,6 +75,9 @@ export class UsersService {
             createdAt: true,
           },
         },
+        jobTitle: {
+          select: { id: true, name: true },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -104,7 +107,7 @@ export class UsersService {
     });
   }
 
-  async inviteMember(organizationId: string, data: { email: string; firstName: string; lastName: string; password?: string; role?: string; modulePermissions?: any }) {
+  async inviteMember(organizationId: string, data: { email: string; firstName: string; lastName: string; password?: string; phone?: string; role?: string; jobTitleId?: string; modulePermissions?: any }) {
     // Check if user already exists
     let user = await this.prisma.user.findUnique({ where: { email: data.email } });
 
@@ -122,6 +125,7 @@ export class UsersService {
           email: data.email,
           firstName: data.firstName,
           lastName: data.lastName,
+          phone: data.phone || null,
           passwordHash,
         },
       });
@@ -132,6 +136,7 @@ export class UsersService {
         organizationId,
         userId: user.id,
         role: (data.role as any) || 'MEMBER',
+        jobTitleId: data.jobTitleId || null,
         modulePermissions: data.modulePermissions || DEFAULT_MODULE_PERMISSIONS,
       },
       include: {
