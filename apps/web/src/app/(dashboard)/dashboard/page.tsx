@@ -18,7 +18,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Briefcase,
-  Megaphone,
 } from 'lucide-react';
 import { SkeletonKPI } from '@/components/ui/LoadingSkeleton';
 
@@ -292,7 +291,6 @@ export default function DashboardPage() {
   const [cashflow, setCashflow] = useState<any[]>([]);
   const [mrr, setMrr] = useState<any>(null);
   const [invoiceSummary, setInvoiceSummary] = useState<any>(null);
-  const [contentSummary, setContentSummary] = useState<any>(null);
   const [onboardingSummary, setOnboardingSummary] = useState<any>(null);
   const [leads, setLeads] = useState<any>({ data: [], total: 0 });
   const [recentDeals, setRecentDeals] = useState<any[]>([]);
@@ -310,7 +308,6 @@ export default function DashboardPage() {
       api.getCashflowRealized(6).then(setCashflow).catch(() => null),
       api.getMRR().then(setMrr).catch(() => null),
       api.getInvoiceSummary().then(setInvoiceSummary).catch(() => null),
-      api.getContentPostSummary().then(setContentSummary).catch(() => null),
       api.getOnboardingSummary().then(setOnboardingSummary).catch(() => null),
       api.getLeads({ limit: '5' }).then(setLeads).catch(() => null),
       api.getDeals({ status: 'OPEN', limit: '5' }).then(setRecentDeals).catch(() => null),
@@ -345,16 +342,6 @@ export default function DashboardPage() {
     label: new Date(m.month + '-01').toLocaleDateString('pt-BR', { month: 'short' }),
     value: Number(m.revenue || 0),
   }));
-
-  // Content donut
-  const contentSegments = contentSummary
-    ? [
-        { label: 'Rascunho', value: Number(contentSummary.draft || 0), color: '#9ca3af' },
-        { label: 'Em revisão', value: Number(contentSummary.review || 0), color: '#fbbf24' },
-        { label: 'Aprovado', value: Number(contentSummary.approved || 0), color: '#34d399' },
-        { label: 'Publicado', value: Number(contentSummary.published || 0), color: '#5c7cfa' },
-      ].filter((s) => s.value > 0)
-    : [];
 
   // Month-over-month revenue trend
   const currentRevenue = cashflow.length > 0 ? Number(cashflow[cashflow.length - 1]?.revenue || 0) : 0;
@@ -435,13 +422,6 @@ export default function DashboardPage() {
           color={overdueTasks.length > 0 ? 'text-red-600 bg-red-50' : 'text-gray-400 bg-gray-50'}
         />
         <KpiCard
-          label="Conteúdos"
-          value={contentSummary ? Object.values(contentSummary).reduce((a: number, b: any) => a + Number(b || 0), 0) : 0}
-          subtitle={contentSummary?.published ? `${contentSummary.published} publicados` : undefined}
-          icon={Megaphone}
-          color="text-pink-600 bg-pink-50"
-        />
-        <KpiCard
           label="Onboardings"
           value={onboardingSummary?.active || 0}
           subtitle={onboardingSummary?.completed ? `${onboardingSummary.completed} concluídos` : undefined}
@@ -477,17 +457,8 @@ export default function DashboardPage() {
         </Section>
       </div>
 
-      {/* ============ CONTENT + TASKS ROW ============ */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 mb-6">
-        {/* Content Status Donut */}
-        <Section title="Status do Conteúdo">
-          {contentSegments.length > 0 ? (
-            <DonutChart segments={contentSegments} />
-          ) : (
-            <p className="text-sm text-gray-400 text-center py-8">Nenhum conteúdo criado</p>
-          )}
-        </Section>
-
+      {/* ============ TASKS ROW ============ */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 mb-6">
         {/* Task Progress */}
         <Section title="Minhas Tarefas">
           {totalTasks > 0 ? (
