@@ -6,7 +6,6 @@ import { cn } from '@/lib/cn';
 import {
   User,
   Building2,
-  Users,
   Shield,
   Mail,
   Copy,
@@ -39,23 +38,12 @@ import {
 const TABS = [
   { key: 'perfil', label: 'Perfil', icon: User },
   { key: 'organizacao', label: 'Organização', icon: Building2 },
-  { key: 'equipe', label: 'Equipe', icon: Users },
-  { key: 'cargos', label: 'Cargos', icon: Shield },
+{ key: 'cargos', label: 'Cargos', icon: Shield },
   { key: 'integracoes', label: 'Integrações', icon: Puzzle },
   { key: 'resetar', label: 'Resetar Dados', icon: RotateCcw },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
-
-const ROLES = ['OWNER', 'ADMIN', 'MANAGER', 'MEMBER', 'VIEWER'] as const;
-
-const roleBadgeColors: Record<string, string> = {
-  OWNER: 'bg-purple-100 text-purple-700',
-  ADMIN: 'bg-blue-100 text-blue-700',
-  MANAGER: 'bg-amber-100 text-amber-700',
-  MEMBER: 'bg-gray-100 text-gray-700',
-  VIEWER: 'bg-green-100 text-green-700',
-};
 
 const inputClass =
   'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-pisom-500 focus:outline-none focus:ring-2 focus:ring-pisom-200';
@@ -94,14 +82,6 @@ export default function SettingsPage() {
   const [logoPreview, setLogoPreview] = useState('');
   const [brandSaving, setBrandSaving] = useState(false);
   const [brandMsg, setBrandMsg] = useState('');
-
-  // Team state
-  const [team, setTeam] = useState<any[]>([]);
-  const [showInvite, setShowInvite] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('MEMBER');
-  const [inviting, setInviting] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   // Job Titles state
   const [jobTitles, setJobTitles] = useState<any[]>([]);
@@ -284,14 +264,13 @@ export default function SettingsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [me, teamData] = await Promise.all([api.getMe(), api.getTeam()]);
+        const me = await api.getMe();
         setUser(me);
         setProfileForm({ firstName: me.firstName || '', lastName: me.lastName || '' });
         setOrgName(me.organization?.name || '');
         setOrgId(me.organization?.id || '');
         setOrgLogo(me.organization?.logo || '');
         setLogoPreview(me.organization?.logo || '');
-        setTeam(teamData);
       } catch {
         // ignore
       } finally {
@@ -345,43 +324,6 @@ export default function SettingsPage() {
     navigator.clipboard.writeText(orgId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleInvite = async () => {
-    setInviting(true);
-    try {
-      await api.inviteMember({ email: inviteEmail, role: inviteRole });
-      const teamData = await api.getTeam();
-      setTeam(teamData);
-      setInviteEmail('');
-      setInviteRole('MEMBER');
-      setShowInvite(false);
-    } catch {
-      // ignore
-    } finally {
-      setInviting(false);
-    }
-  };
-
-  const handleRoleChange = async (memberId: string, role: string) => {
-    try {
-      await api.updateMemberRole(memberId, role);
-      setTeam((prev) =>
-        prev.map((m) => (m.id === memberId ? { ...m, role } : m)),
-      );
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleRemove = async (memberId: string) => {
-    try {
-      await api.removeMember(memberId);
-      setTeam((prev) => prev.filter((m) => m.id !== memberId));
-      setConfirmRemove(null);
-    } catch {
-      // ignore
-    }
   };
 
   if (loading) {
@@ -718,165 +660,6 @@ export default function SettingsPage() {
                   {copied ? 'Copiado!' : 'Copiar'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'equipe' && (
-        <div className="space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">
-                <Users className="mr-2 inline h-5 w-5" />
-                Membros da Equipe
-              </h2>
-              <button
-                onClick={() => setShowInvite(!showInvite)}
-                className={btnPrimary + ' flex items-center gap-2'}
-              >
-                <Plus className="h-4 w-4" />
-                Convidar Membro
-              </button>
-            </div>
-
-            {/* Invite form */}
-            {showInvite && (
-              <div className="mb-6 rounded-lg border border-pisom-200 bg-pisom-50 p-4">
-                <h3 className="mb-3 text-sm font-medium text-gray-900">
-                  Convidar novo membro
-                </h3>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <input
-                      type="email"
-                      placeholder="E-mail do membro"
-                      className={inputClass}
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                    />
-                  </div>
-                  <select
-                    className={cn(inputClass, 'w-40')}
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                  >
-                    {ROLES.filter((r) => r !== 'OWNER').map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className={btnPrimary}
-                    disabled={inviting || !inviteEmail}
-                    onClick={handleInvite}
-                  >
-                    {inviting ? 'Enviando...' : 'Enviar'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Team list */}
-            <div className="divide-y divide-gray-100">
-              {team.map((member) => {
-                const u = member.user || member;
-                return (
-                  <div
-                    key={member.id}
-                    className="flex items-center gap-4 py-4 first:pt-0 last:pb-0"
-                  >
-                    {/* Avatar */}
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-pisom-100 text-sm font-semibold text-pisom-700">
-                      {getInitials(u.firstName, u.lastName)}
-                    </div>
-
-                    {/* Info */}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900">
-                        {u.firstName} {u.lastName}
-                      </p>
-                      <p className="flex items-center gap-1 truncate text-xs text-gray-500">
-                        <Mail className="h-3 w-3" />
-                        {u.email}
-                      </p>
-                    </div>
-
-                    {/* Status badge */}
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-xs font-medium',
-                        member.isActive
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-500',
-                      )}
-                    >
-                      {member.isActive ? 'Ativo' : 'Inativo'}
-                    </span>
-
-                    {/* Role badge */}
-                    <span
-                      className={cn(
-                        'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                        roleBadgeColors[member.role] || 'bg-gray-100 text-gray-700',
-                      )}
-                    >
-                      <Shield className="h-3 w-3" />
-                      {member.role}
-                    </span>
-
-                    {/* Role select */}
-                    <select
-                      className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs focus:border-pisom-500 focus:outline-none focus:ring-2 focus:ring-pisom-200"
-                      value={member.role}
-                      disabled={member.role === 'OWNER'}
-                      onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* Remove button */}
-                    {member.role !== 'OWNER' && (
-                      <>
-                        {confirmRemove === member.id ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleRemove(member.id)}
-                              className="rounded-lg bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
-                            >
-                              Confirmar
-                            </button>
-                            <button
-                              onClick={() => setConfirmRemove(null)}
-                              className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmRemove(member.id)}
-                            className="rounded-lg p-1.5 text-red-500 hover:bg-red-50"
-                            title="Remover membro"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-              {team.length === 0 && (
-                <p className="py-8 text-center text-sm text-gray-500">
-                  Nenhum membro encontrado.
-                </p>
-              )}
             </div>
           </div>
         </div>
