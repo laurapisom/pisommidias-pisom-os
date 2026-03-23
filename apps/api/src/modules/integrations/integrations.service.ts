@@ -145,23 +145,13 @@ export class IntegrationsService {
       where: { organizationId_provider: { organizationId, provider: 'sicoob' } },
     });
     if (!integration) return null;
-    // Mask sensitive fields
-    return {
-      ...integration,
-      clientSecret: integration.clientSecret ? '••••••••' : null,
-      certificatePass: integration.certificatePass ? '••••••••' : null,
-    };
+    return integration;
   }
 
   async saveSicoobIntegration(
     organizationId: string,
     data: {
       clientId: string;
-      clientSecret: string;
-      certificatePath: string;
-      certificatePass: string;
-      accountNumber: string;
-      agency: string;
       sandbox?: boolean;
     },
   ) {
@@ -170,24 +160,14 @@ export class IntegrationsService {
       create: {
         organizationId,
         provider: 'sicoob',
-        apiKey: '', // Not used for Sicoob
+        apiKey: '',
         clientId: data.clientId,
-        clientSecret: data.clientSecret,
-        certificatePath: data.certificatePath,
-        certificatePass: data.certificatePass,
-        accountNumber: data.accountNumber,
-        agency: data.agency,
         sandbox: data.sandbox ?? false,
         isActive: true,
         syncStatus: 'idle',
       },
       update: {
         clientId: data.clientId,
-        clientSecret: data.clientSecret,
-        certificatePath: data.certificatePath,
-        certificatePass: data.certificatePass,
-        accountNumber: data.accountNumber,
-        agency: data.agency,
         sandbox: data.sandbox ?? false,
       },
     });
@@ -204,11 +184,6 @@ export class IntegrationsService {
 
     const config = {
       clientId: integration.clientId!,
-      clientSecret: integration.clientSecret!,
-      certificatePath: integration.certificatePath!,
-      certificatePass: integration.certificatePass!,
-      accountNumber: integration.accountNumber!,
-      agency: integration.agency!,
     };
 
     const success = await this.sicoobService.testConnection(config, integration.sandbox);

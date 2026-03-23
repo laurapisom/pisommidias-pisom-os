@@ -128,11 +128,6 @@ export default function SettingsPage() {
 
   // Sicoob state
   const [sicoobClientId, setSicoobClientId] = useState('');
-  const [sicoobClientSecret, setSicoobClientSecret] = useState('');
-  const [sicoobCertPath, setSicoobCertPath] = useState('');
-  const [sicoobCertPass, setSicoobCertPass] = useState('');
-  const [sicoobAccount, setSicoobAccount] = useState('');
-  const [sicoobAgency, setSicoobAgency] = useState('');
   const [sicoobSandbox, setSicoobSandbox] = useState(false);
   const [sicoobSaving, setSicoobSaving] = useState(false);
   const [sicoobMsg, setSicoobMsg] = useState('');
@@ -146,7 +141,6 @@ export default function SettingsPage() {
   const [sicoobLoaded, setSicoobLoaded] = useState(false);
   const [sicoobSyncProgress, setSicoobSyncProgress] = useState<number>(0);
   const [sicoobSyncDetail, setSicoobSyncDetail] = useState<string>('');
-  const [sicoobShowSecret, setSicoobShowSecret] = useState(false);
 
   // Load job titles when cargos tab is activated
   useEffect(() => {
@@ -198,12 +192,7 @@ export default function SettingsPage() {
         ]);
         if (settings) {
           setSicoobClientId(settings.clientId || '');
-          setSicoobCertPath(settings.certificatePath || '');
-          setSicoobAccount(settings.accountNumber || '');
-          setSicoobAgency(settings.agency || '');
           setSicoobSandbox(settings.sandbox ?? false);
-          if (settings.clientSecret) setSicoobClientSecret(settings.clientSecret);
-          if (settings.certificatePass) setSicoobCertPass(settings.certificatePass);
         }
         setSicoobSyncStatus(status.syncStatus);
         setSicoobLastSync(status.lastSyncAt);
@@ -1118,90 +1107,16 @@ export default function SettingsPage() {
 
             <div className="space-y-4">
               {/* Client ID */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Client ID</label>
-                  <input
-                    type="text"
-                    className={cn(inputClass, !sicoobEditing && sicoobClientId && 'bg-gray-50 text-gray-500')}
-                    placeholder="Client ID do Sicoob"
-                    value={sicoobClientId}
-                    disabled={!sicoobEditing && !!sicoobClientId && sicoobLoaded}
-                    onChange={(e) => setSicoobClientId(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Client Secret</label>
-                  <div className="relative">
-                    <input
-                      type={sicoobShowSecret ? 'text' : 'password'}
-                      className={cn(inputClass, !sicoobEditing && sicoobClientSecret && 'bg-gray-50 text-gray-500')}
-                      placeholder="Client Secret"
-                      value={sicoobClientSecret}
-                      disabled={!sicoobEditing && !!sicoobClientSecret && sicoobLoaded}
-                      onChange={(e) => setSicoobClientSecret(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSicoobShowSecret(!sicoobShowSecret)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {sicoobShowSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Certificate */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Caminho do certificado (.PFX)</label>
-                  <input
-                    type="text"
-                    className={cn(inputClass, !sicoobEditing && sicoobCertPath && 'bg-gray-50 text-gray-500')}
-                    placeholder="/path/to/certificate.pfx"
-                    value={sicoobCertPath}
-                    disabled={!sicoobEditing && !!sicoobCertPath && sicoobLoaded}
-                    onChange={(e) => setSicoobCertPath(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Senha do certificado</label>
-                  <input
-                    type="password"
-                    className={cn(inputClass, !sicoobEditing && sicoobCertPass && 'bg-gray-50 text-gray-500')}
-                    placeholder="Senha do .PFX"
-                    value={sicoobCertPass}
-                    disabled={!sicoobEditing && !!sicoobCertPass && sicoobLoaded}
-                    onChange={(e) => setSicoobCertPass(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Account info */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Agência</label>
-                  <input
-                    type="text"
-                    className={cn(inputClass, !sicoobEditing && sicoobAgency && 'bg-gray-50 text-gray-500')}
-                    placeholder="0001"
-                    value={sicoobAgency}
-                    disabled={!sicoobEditing && !!sicoobAgency && sicoobLoaded}
-                    onChange={(e) => setSicoobAgency(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Conta Corrente</label>
-                  <input
-                    type="text"
-                    className={cn(inputClass, !sicoobEditing && sicoobAccount && 'bg-gray-50 text-gray-500')}
-                    placeholder="12345-6"
-                    value={sicoobAccount}
-                    disabled={!sicoobEditing && !!sicoobAccount && sicoobLoaded}
-                    onChange={(e) => setSicoobAccount(e.target.value)}
-                  />
-                </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Client ID</label>
+                <input
+                  type="text"
+                  className={cn(inputClass, !sicoobEditing && sicoobClientId && 'bg-gray-50 text-gray-500')}
+                  placeholder="Client ID do Sicoob"
+                  value={sicoobClientId}
+                  disabled={!sicoobEditing && !!sicoobClientId && sicoobLoaded}
+                  onChange={(e) => setSicoobClientId(e.target.value)}
+                />
               </div>
 
               {/* Sandbox */}
@@ -1227,18 +1142,13 @@ export default function SettingsPage() {
                   <>
                     <button
                       className={btnPrimary}
-                      disabled={sicoobSaving || !sicoobClientId || !sicoobClientSecret || !sicoobCertPath || !sicoobCertPass || !sicoobAccount || !sicoobAgency}
+                      disabled={sicoobSaving || !sicoobClientId}
                       onClick={async () => {
                         setSicoobSaving(true);
                         setSicoobMsg('');
                         try {
                           await api.saveSicoobIntegration({
                             clientId: sicoobClientId,
-                            clientSecret: sicoobClientSecret,
-                            certificatePath: sicoobCertPath,
-                            certificatePass: sicoobCertPass,
-                            accountNumber: sicoobAccount,
-                            agency: sicoobAgency,
                             sandbox: sicoobSandbox,
                           });
                           setSicoobMsg('Credenciais salvas com sucesso.');

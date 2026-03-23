@@ -1,16 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as https from 'https';
-import * as fs from 'fs';
 
 // ── Interfaces ──────────────────────────────────────────────
 
 export interface SicoobConfig {
   clientId: string;
-  clientSecret: string;
-  certificatePath: string;
-  certificatePass: string;
-  accountNumber: string;
-  agency: string;
 }
 
 export interface SicoobTransaction {
@@ -66,7 +59,7 @@ export class SicoobService {
   // ── Token Management ────────────────────────────────────
 
   private async getAccessToken(config: SicoobConfig, sandbox = false): Promise<string> {
-    const cacheKey = `${config.clientId}:${config.accountNumber}`;
+    const cacheKey = config.clientId;
     const cached = this.tokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.token;
@@ -76,46 +69,36 @@ export class SicoobService {
     const body = new URLSearchParams({
       grant_type: 'client_credentials',
       client_id: config.clientId,
-      client_secret: config.clientSecret,
       scope: 'cco_extrato cco_saldo dda_boletos pix_read pagamentos_agendamentos',
     });
 
-    const agent = this.createHttpsAgent(config);
-    const res = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-      ...(agent ? { dispatcher: undefined } : {}),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Sicoob auth failed (${res.status}): ${text}`);
-    }
-
-    const data = await res.json() as { access_token: string; expires_in: number };
-    const token = data.access_token;
-    // Cache with 20s margin before expiry
-    this.tokenCache.set(cacheKey, {
-      token,
-      expiresAt: Date.now() + (data.expires_in - 20) * 1000,
-    });
-
-    return token;
-  }
-
-  private createHttpsAgent(config: SicoobConfig): https.Agent | null {
     try {
-      if (!config.certificatePath || !fs.existsSync(config.certificatePath)) {
-        return null;
-      }
-      return new https.Agent({
-        pfx: fs.readFileSync(config.certificatePath),
-        passphrase: config.certificatePass,
+      const res = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+        signal: controller.signal,
       });
-    } catch (err) {
-      this.logger.warn(`Failed to create HTTPS agent: ${err.message}`);
-      return null;
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Sicoob auth failed (${res.status}): ${text.substring(0, 200)}`);
+      }
+
+      const data = await res.json() as { access_token: string; expires_in: number };
+      const token = data.access_token;
+      // Cache with 20s margin before expiry
+      this.tokenCache.set(cacheKey, {
+        token,
+        expiresAt: Date.now() + (data.expires_in - 20) * 1000,
+      });
+
+      return token;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -130,14 +113,21 @@ export class SicoobService {
       client_id: config.clientId,
     };
 
-    const res = await fetch(url, { headers });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Sicoob API error ${res.status}: ${body}`);
+    try {
+      const res = await fetch(url, { headers, signal: controller.signal });
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Sicoob API error ${res.status}: ${body.substring(0, 200)}`);
+      }
+
+      return res.json();
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return res.json();
   }
 
   // ── Public Methods ──────────────────────────────────────
@@ -156,8 +146,8 @@ export class SicoobService {
 
   // ── Balance ─────────────────────────────────────────────
 
-  async getBalance(config: SicoobConfig, sandbox = false): Promise<SicoobBalance> {
-    const params = `?numeroContaCorrente=${config.accountNumber}`;
+  async getBalance(config: SicoobConfig, sandbox = false, accountNumber?: string): Promise<SicoobBalance> {
+    const params = accountNumber ? `?numeroContaCorrente=${accountNumber}` : '';
     const data = await this.httpGet<any>(
       `/conta-corrente/v2/saldo${params}`,
       config,
@@ -178,12 +168,13 @@ export class SicoobService {
     startDate: string,
     endDate: string,
     sandbox = false,
+    accountNumber?: string,
   ): Promise<SicoobTransaction[]> {
     const params = new URLSearchParams({
-      numeroContaCorrente: config.accountNumber,
       dataInicio: startDate, // YYYY-MM-DD
       dataFim: endDate,      // YYYY-MM-DD
     });
+    if (accountNumber) params.set('numeroContaCorrente', accountNumber);
 
     const data = await this.httpGet<any>(
       `/conta-corrente/v2/extrato?${params.toString()}`,
@@ -279,7 +270,6 @@ export class SicoobService {
       const params = new URLSearchParams({
         dataInicio: startDate,
         dataFim: endDate,
-        numeroContaCorrente: config.accountNumber,
       });
 
       const data = await this.httpGet<any>(

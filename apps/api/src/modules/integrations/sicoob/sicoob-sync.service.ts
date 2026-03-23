@@ -160,11 +160,6 @@ export class SicoobSyncService {
   private buildConfig(integration: any): SicoobConfig {
     return {
       clientId: integration.clientId,
-      clientSecret: integration.clientSecret,
-      certificatePath: integration.certificatePath,
-      certificatePass: integration.certificatePass,
-      accountNumber: integration.accountNumber,
-      agency: integration.agency,
     };
   }
 
