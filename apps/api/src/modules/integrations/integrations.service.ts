@@ -152,6 +152,7 @@ export class IntegrationsService {
     organizationId: string,
     data: {
       clientId: string;
+      accountNumber: string;
       sandbox?: boolean;
     },
   ) {
@@ -162,12 +163,14 @@ export class IntegrationsService {
         provider: 'sicoob',
         apiKey: '',
         clientId: data.clientId,
+        accountNumber: data.accountNumber,
         sandbox: data.sandbox ?? false,
         isActive: true,
         syncStatus: 'idle',
       },
       update: {
         clientId: data.clientId,
+        accountNumber: data.accountNumber,
         sandbox: data.sandbox ?? false,
       },
     });
@@ -184,6 +187,7 @@ export class IntegrationsService {
 
     const config = {
       clientId: integration.clientId!,
+      accountNumber: integration.accountNumber || '',
     };
 
     const success = await this.sicoobService.testConnection(config, integration.sandbox);

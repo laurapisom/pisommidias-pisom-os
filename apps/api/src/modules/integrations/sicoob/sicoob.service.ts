@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 export interface SicoobConfig {
   clientId: string;
+  accountNumber: string;
 }
 
 export interface SicoobTransaction {
@@ -69,7 +70,7 @@ export class SicoobService {
     const body = new URLSearchParams({
       grant_type: 'client_credentials',
       client_id: config.clientId,
-      scope: 'cco_extrato cco_saldo dda_boletos pix_read pagamentos_agendamentos',
+      scope: 'cco_consulta',
     });
 
     const controller = new AbortController();
@@ -146,10 +147,10 @@ export class SicoobService {
 
   // ── Balance ─────────────────────────────────────────────
 
-  async getBalance(config: SicoobConfig, sandbox = false, accountNumber?: string): Promise<SicoobBalance> {
-    const params = accountNumber ? `?numeroContaCorrente=${accountNumber}` : '';
+  async getBalance(config: SicoobConfig, sandbox = false): Promise<SicoobBalance> {
+    const params = `?numeroContaCorrente=${config.accountNumber}`;
     const data = await this.httpGet<any>(
-      `/conta-corrente/v2/saldo${params}`,
+      `/conta-corrente/v4/saldo${params}`,
       config,
       sandbox,
     );
@@ -168,16 +169,15 @@ export class SicoobService {
     startDate: string,
     endDate: string,
     sandbox = false,
-    accountNumber?: string,
   ): Promise<SicoobTransaction[]> {
     const params = new URLSearchParams({
+      numeroContaCorrente: config.accountNumber,
       dataInicio: startDate, // YYYY-MM-DD
       dataFim: endDate,      // YYYY-MM-DD
     });
-    if (accountNumber) params.set('numeroContaCorrente', accountNumber);
 
     const data = await this.httpGet<any>(
-      `/conta-corrente/v2/extrato?${params.toString()}`,
+      `/conta-corrente/v4/extrato?${params.toString()}`,
       config,
       sandbox,
     );
@@ -268,12 +268,13 @@ export class SicoobService {
   ): Promise<SicoobScheduledPayment[]> {
     try {
       const params = new URLSearchParams({
+        numeroContaCorrente: config.accountNumber,
         dataInicio: startDate,
         dataFim: endDate,
       });
 
       const data = await this.httpGet<any>(
-        `/pagamentos/v2/agendamentos?${params.toString()}`,
+        `/pagamentos/v4/agendamentos?${params.toString()}`,
         config,
         sandbox,
       );

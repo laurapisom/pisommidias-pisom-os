@@ -128,6 +128,7 @@ export default function SettingsPage() {
 
   // Sicoob state
   const [sicoobClientId, setSicoobClientId] = useState('');
+  const [sicoobAccount, setSicoobAccount] = useState('');
   const [sicoobSandbox, setSicoobSandbox] = useState(false);
   const [sicoobSaving, setSicoobSaving] = useState(false);
   const [sicoobMsg, setSicoobMsg] = useState('');
@@ -192,6 +193,7 @@ export default function SettingsPage() {
         ]);
         if (settings) {
           setSicoobClientId(settings.clientId || '');
+          setSicoobAccount(settings.accountNumber || '');
           setSicoobSandbox(settings.sandbox ?? false);
         }
         setSicoobSyncStatus(status.syncStatus);
@@ -1106,17 +1108,30 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-4">
-              {/* Client ID */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Client ID</label>
-                <input
-                  type="text"
-                  className={cn(inputClass, !sicoobEditing && sicoobClientId && 'bg-gray-50 text-gray-500')}
-                  placeholder="Client ID do Sicoob"
-                  value={sicoobClientId}
-                  disabled={!sicoobEditing && !!sicoobClientId && sicoobLoaded}
-                  onChange={(e) => setSicoobClientId(e.target.value)}
-                />
+              {/* Client ID + Conta Corrente */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Client ID</label>
+                  <input
+                    type="text"
+                    className={cn(inputClass, !sicoobEditing && sicoobClientId && 'bg-gray-50 text-gray-500')}
+                    placeholder="Client ID do Sicoob"
+                    value={sicoobClientId}
+                    disabled={!sicoobEditing && !!sicoobClientId && sicoobLoaded}
+                    onChange={(e) => setSicoobClientId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Conta Corrente</label>
+                  <input
+                    type="text"
+                    className={cn(inputClass, !sicoobEditing && sicoobAccount && 'bg-gray-50 text-gray-500')}
+                    placeholder="74.230-9"
+                    value={sicoobAccount}
+                    disabled={!sicoobEditing && !!sicoobAccount && sicoobLoaded}
+                    onChange={(e) => setSicoobAccount(e.target.value)}
+                  />
+                </div>
               </div>
 
               {/* Sandbox */}
@@ -1142,13 +1157,14 @@ export default function SettingsPage() {
                   <>
                     <button
                       className={btnPrimary}
-                      disabled={sicoobSaving || !sicoobClientId}
+                      disabled={sicoobSaving || !sicoobClientId || !sicoobAccount}
                       onClick={async () => {
                         setSicoobSaving(true);
                         setSicoobMsg('');
                         try {
                           await api.saveSicoobIntegration({
                             clientId: sicoobClientId,
+                            accountNumber: sicoobAccount,
                             sandbox: sicoobSandbox,
                           });
                           setSicoobMsg('Credenciais salvas com sucesso.');

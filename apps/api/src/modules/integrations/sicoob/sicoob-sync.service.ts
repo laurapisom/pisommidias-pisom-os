@@ -160,6 +160,7 @@ export class SicoobSyncService {
   private buildConfig(integration: any): SicoobConfig {
     return {
       clientId: integration.clientId,
+      accountNumber: integration.accountNumber || '',
     };
   }
 

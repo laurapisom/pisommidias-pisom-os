@@ -85,6 +85,7 @@ export class IntegrationsController {
     @CurrentUser() user: any,
     @Body() body: {
       clientId: string;
+      accountNumber: string;
       sandbox?: boolean;
     },
   ) {
