@@ -181,19 +181,6 @@ export class IntegrationsController {
 
   // ── Sicoob: DDA ─────────────────────────────────────────
 
-  @Get('sicoob/dda')
-  @ApiOperation({ summary: 'List DDA bills' })
-  getDdaBills(
-    @CurrentUser() user: any,
-    @Query() query: { status?: string; page?: string; limit?: string },
-  ) {
-    return this.integrationsService.getDdaBills(user.organizationId, {
-      ...query,
-      page: query.page ? Number(query.page) : undefined,
-      limit: query.limit ? Number(query.limit) : undefined,
-    });
-  }
-
   // ── Reconciliation ──────────────────────────────────────
 
   @Post('sicoob/reconcile')

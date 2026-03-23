@@ -1112,7 +1112,7 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Sicoob</h2>
                 <p className="text-sm text-gray-500">
-                  Extrato bancário, DDA, pagamentos agendados e conciliação automática
+                  Extrato bancário e conciliação automática
                 </p>
               </div>
             </div>

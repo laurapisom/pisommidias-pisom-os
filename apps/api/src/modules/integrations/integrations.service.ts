@@ -224,13 +224,13 @@ export class IntegrationsService {
       config.certificatePass = integration.certificatePass || undefined;
     }
 
-    const success = await this.sicoobService.testConnection(config, integration.sandbox);
+    const result = await this.sicoobService.testConnection(config, integration.sandbox);
 
     return {
-      success,
-      message: success
+      success: result.success,
+      message: result.success
         ? 'Conexão estabelecida com sucesso'
-        : 'Falha ao conectar com a API do Sicoob. Verifique o Client ID, certificado e conta corrente.',
+        : `Falha ao conectar com a API do Sicoob: ${result.error || 'Verifique o Client ID, certificado e conta corrente.'}`,
     };
   }
 

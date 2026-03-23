@@ -23,26 +23,6 @@ export interface SicoobTransaction {
   documentNumber?: string;
 }
 
-export interface SicoobDdaBill {
-  id: string;
-  barcode?: string;
-  issuerName: string;
-  issuerDocument?: string;
-  amount: number;
-  dueDate: string;
-  status: string;
-}
-
-export interface SicoobScheduledPayment {
-  id: string;
-  type: string;
-  recipient: string;
-  recipientDoc?: string;
-  amount: number;
-  scheduledDate: string;
-  status: string;
-}
-
 export interface SicoobBalance {
   available: number;
   blocked: number;
@@ -63,10 +43,6 @@ export class SicoobService {
 
   // ── mTLS HTTPS Request ────────────────────────────────────
 
-  /**
-   * Makes an HTTPS request with mTLS (mutual TLS) using client certificate.
-   * This is required by Sicoob's API security standards.
-   */
   private httpsRequest(
     url: string,
     options: {
@@ -89,7 +65,6 @@ export class SicoobService {
         timeout: options.timeout || 30000,
       };
 
-      // mTLS: attach client certificate if provided
       if (options.pfx) {
         reqOptions.pfx = options.pfx;
         reqOptions.passphrase = options.passphrase;
@@ -131,6 +106,8 @@ export class SicoobService {
       scope: 'cco_consulta cco_saldo cco_extrato',
     });
 
+    this.logger.log(`Requesting token from ${tokenUrl}`);
+
     const res = await this.httpsRequest(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -140,6 +117,7 @@ export class SicoobService {
     });
 
     if (res.status >= 400) {
+      this.logger.error(`Token request failed (${res.status}): ${res.body.substring(0, 300)}`);
       throw new Error(`Sicoob auth failed (${res.status}): ${res.body.substring(0, 200)}`);
     }
 
@@ -150,6 +128,7 @@ export class SicoobService {
       expiresAt: Date.now() + (data.expires_in - 20) * 1000,
     });
 
+    this.logger.log('Token obtained successfully');
     return token;
   }
 
@@ -157,6 +136,8 @@ export class SicoobService {
     const token = await this.getAccessToken(config, sandbox);
     const baseUrl = sandbox ? this.SANDBOX_URL : this.BASE_URL;
     const url = `${baseUrl}${path}`;
+
+    this.logger.log(`GET ${url}`);
 
     const res = await this.httpsRequest(url, {
       method: 'GET',
@@ -170,8 +151,10 @@ export class SicoobService {
       passphrase: config.certificatePass,
     });
 
+    this.logger.log(`Response ${res.status}: ${res.body.substring(0, 200)}`);
+
     if (res.status >= 400) {
-      throw new Error(`Sicoob API error ${res.status}: ${res.body.substring(0, 200)}`);
+      throw new Error(`Sicoob API error ${res.status}: ${res.body.substring(0, 300)}`);
     }
 
     return JSON.parse(res.body);
@@ -192,14 +175,34 @@ export class SicoobService {
 
   // ── Public Methods ──────────────────────────────────────
 
-  async testConnection(config: SicoobConfig, sandbox = false): Promise<boolean> {
+  async testConnection(config: SicoobConfig, sandbox = false): Promise<{ success: boolean; error?: string }> {
     try {
+      // Step 1: Test token generation
       await this.getAccessToken(config, sandbox);
-      await this.getBalance(config, sandbox);
-      return true;
+      this.logger.log('Test: token OK');
+
+      // Step 2: Test balance endpoint
+      try {
+        await this.getBalance(config, sandbox);
+        this.logger.log('Test: balance OK');
+      } catch (balanceErr) {
+        this.logger.warn(`Test: balance failed (${balanceErr.message}), trying extrato...`);
+        // Balance might fail but extrato might work - try current month
+        const now = new Date();
+        const mes = now.getMonth() + 1;
+        const ano = now.getFullYear();
+        await this.httpGet(
+          `/conta-corrente/v4/extrato/${mes}/${ano}?numeroContaCorrente=${config.accountNumber}`,
+          config,
+          sandbox,
+        );
+        this.logger.log('Test: extrato OK');
+      }
+
+      return { success: true };
     } catch (error) {
-      this.logger.warn(`Sicoob connection test failed: ${error.message}`);
-      return false;
+      this.logger.error(`Sicoob connection test failed: ${error.message}`);
+      return { success: false, error: error.message };
     }
   }
 
@@ -228,17 +231,17 @@ export class SicoobService {
     endDate: string,
     sandbox = false,
   ): Promise<SicoobTransaction[]> {
-    // Sicoob API uses month/year path params for extrato
     const start = new Date(startDate);
     const end = new Date(endDate);
     const allTransactions: SicoobTransaction[] = [];
+    const errors: string[] = [];
 
     // Iterate through each month in the range
     const current = new Date(start.getFullYear(), start.getMonth(), 1);
     const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
 
     while (current <= endMonth) {
-      const mes = current.getMonth() + 1; // 1-12
+      const mes = current.getMonth() + 1;
       const ano = current.getFullYear();
 
       try {
@@ -253,10 +256,16 @@ export class SicoobService {
           allTransactions.push(...transactions.map((tx: any) => this.mapTransaction(tx)));
         }
       } catch (error) {
+        errors.push(`${mes}/${ano}: ${error.message}`);
         this.logger.warn(`Failed to fetch statement for ${mes}/${ano}: ${error.message}`);
       }
 
       current.setMonth(current.getMonth() + 1);
+    }
+
+    // If ALL months failed and we got no data, throw an error
+    if (allTransactions.length === 0 && errors.length > 0) {
+      throw new Error(`Falha ao buscar extrato: ${errors[0]}`);
     }
 
     return allTransactions;
@@ -289,99 +298,5 @@ export class SicoobService {
     if (desc.includes('CHEQUE')) return 'CHEQUE';
     if (desc.includes('DEB AUTO') || desc.includes('DEBITO AUTO')) return 'DEBITO_AUTOMATICO';
     return 'OUTROS';
-  }
-
-  // ── DDA (Boletos Eletrônicos) ───────────────────────────
-
-  async getDdaBills(
-    config: SicoobConfig,
-    startDate: string,
-    endDate: string,
-    sandbox = false,
-  ): Promise<SicoobDdaBill[]> {
-    try {
-      const params = new URLSearchParams({
-        dataInicio: startDate,
-        dataFim: endDate,
-      });
-
-      const data = await this.httpGet<any>(
-        `/dda/v1/boletos?${params.toString()}`,
-        config,
-        sandbox,
-      );
-
-      const bills = data.boletos || data.resultado || data || [];
-      if (!Array.isArray(bills)) return [];
-
-      return bills.map((bill: any) => ({
-        id: String(bill.id || bill.identificador || bill.codigoBarras),
-        barcode: bill.codigoBarras || bill.linhaDigitavel || undefined,
-        issuerName: bill.nomeCedente || bill.cedente || bill.beneficiario || 'Desconhecido',
-        issuerDocument: bill.documentoCedente || bill.cnpjCedente || undefined,
-        amount: Number(bill.valor || bill.valorDocumento || 0),
-        dueDate: bill.dataVencimento || bill.vencimento,
-        status: bill.situacao || 'PENDING',
-      }));
-    } catch (error) {
-      this.logger.warn(`DDA fetch failed: ${error.message}`);
-      return [];
-    }
-  }
-
-  // ── Scheduled Payments ──────────────────────────────────
-
-  async getScheduledPayments(
-    config: SicoobConfig,
-    startDate: string,
-    endDate: string,
-    sandbox = false,
-  ): Promise<SicoobScheduledPayment[]> {
-    try {
-      const params = new URLSearchParams({
-        numeroContaCorrente: config.accountNumber,
-        dataInicio: startDate,
-        dataFim: endDate,
-      });
-
-      const data = await this.httpGet<any>(
-        `/pagamentos/v4/agendamentos?${params.toString()}`,
-        config,
-        sandbox,
-      );
-
-      const payments = data.agendamentos || data.resultado || data || [];
-      if (!Array.isArray(payments)) return [];
-
-      return payments.map((p: any) => ({
-        id: String(p.id || p.identificador || p.codigoBarras),
-        type: this.classifyPaymentType(p),
-        recipient: p.nomeFavorecido || p.beneficiario || 'Desconhecido',
-        recipientDoc: p.documentoFavorecido || p.cnpjFavorecido || undefined,
-        amount: Number(p.valor || 0),
-        scheduledDate: p.dataAgendamento || p.dataVencimento || p.dataPagamento,
-        status: this.mapPaymentStatus(p.situacao || p.status),
-      }));
-    } catch (error) {
-      this.logger.warn(`Scheduled payments fetch failed: ${error.message}`);
-      return [];
-    }
-  }
-
-  private classifyPaymentType(payment: any): string {
-    if (payment.codigoBarras || payment.linhaDigitavel) return 'BOLETO';
-    if (payment.chavePix) return 'PIX';
-    return 'TED';
-  }
-
-  private mapPaymentStatus(status: string): string {
-    if (!status) return 'SCHEDULED';
-    const s = status.toUpperCase();
-    if (s.includes('AGENDAD') || s.includes('PENDENT')) return 'SCHEDULED';
-    if (s.includes('PROCESSAND') || s.includes('EM PROCESS')) return 'PROCESSING';
-    if (s.includes('EFETUAD') || s.includes('PAGO') || s.includes('LIQUIDADO')) return 'PAID';
-    if (s.includes('CANCEL')) return 'CANCELLED';
-    if (s.includes('REJEITAD') || s.includes('FALHA')) return 'FAILED';
-    return 'SCHEDULED';
   }
 }
