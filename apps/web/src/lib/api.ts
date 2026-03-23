@@ -547,6 +547,25 @@ class ApiClient {
     return this.post<any>('/integrations/sicoob', data);
   }
 
+  async uploadSicoobCertificate(file: File): Promise<{ path: string; filename: string; message: string }> {
+    const token = this.getToken();
+    const formData = new FormData();
+    formData.append('certificate', file);
+
+    const res = await fetch(`${API_URL}/integrations/sicoob/certificate`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.message || `Upload failed (${res.status})`);
+    }
+
+    return res.json();
+  }
+
   testSicoobConnection() {
     return this.post<{ success: boolean; message: string }>('/integrations/sicoob/test');
   }

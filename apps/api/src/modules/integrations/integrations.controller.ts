@@ -7,11 +7,33 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from './integrations.service';
+import * as path from 'path';
+import * as fs from 'fs';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const multer = require('multer');
+
+const certificateStorage = multer.diskStorage({
+  destination: (_req: any, _file: any, cb: any) => {
+    const dir = path.join(process.cwd(), 'uploads', 'certificates');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req: any, file: any, cb: any) => {
+    const orgId = req.user?.organizationId || 'unknown';
+    const ext = path.extname(file.originalname) || '.pfx';
+    cb(null, `sicoob-${orgId}${ext}`);
+  },
+});
 
 @ApiTags('Integrations')
 @ApiBearerAuth()
@@ -92,6 +114,36 @@ export class IntegrationsController {
     },
   ) {
     return this.integrationsService.saveSicoobIntegration(user.organizationId, body);
+  }
+
+  @Post('sicoob/certificate')
+  @ApiOperation({ summary: 'Upload Sicoob PFX certificate' })
+  @UseInterceptors(
+    FileInterceptor('certificate', {
+      storage: certificateStorage,
+      fileFilter: (_req: any, file: any, cb: any) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (['.pfx', '.p12'].includes(ext)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Apenas arquivos .pfx ou .p12 são aceitos'), false);
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async uploadCertificate(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Nenhum arquivo enviado');
+    }
+    return {
+      path: file.path,
+      filename: file.originalname,
+      message: 'Certificado enviado com sucesso',
+    };
   }
 
   @Post('sicoob/test')

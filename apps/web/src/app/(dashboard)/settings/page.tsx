@@ -130,7 +130,9 @@ export default function SettingsPage() {
   const [sicoobClientId, setSicoobClientId] = useState('');
   const [sicoobAccount, setSicoobAccount] = useState('');
   const [sicoobCertPath, setSicoobCertPath] = useState('');
+  const [sicoobCertName, setSicoobCertName] = useState('');
   const [sicoobCertPass, setSicoobCertPass] = useState('');
+  const [sicoobCertUploading, setSicoobCertUploading] = useState(false);
   const [sicoobSandbox, setSicoobSandbox] = useState(false);
   const [sicoobSaving, setSicoobSaving] = useState(false);
   const [sicoobMsg, setSicoobMsg] = useState('');
@@ -197,6 +199,10 @@ export default function SettingsPage() {
           setSicoobClientId(settings.clientId || '');
           setSicoobAccount(settings.accountNumber || '');
           setSicoobCertPath(settings.certificatePath || '');
+          if (settings.certificatePath) {
+            const parts = settings.certificatePath.split('/');
+            setSicoobCertName(parts[parts.length - 1] || '');
+          }
           if (settings.certificatePass) setSicoobCertPass(settings.certificatePass);
           setSicoobSandbox(settings.sandbox ?? false);
         }
@@ -1141,15 +1147,51 @@ export default function SettingsPage() {
               {/* Certificado Digital */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Caminho do Certificado (.PFX)</label>
-                  <input
-                    type="text"
-                    className={cn(inputClass, !sicoobEditing && sicoobCertPath && 'bg-gray-50 text-gray-500')}
-                    placeholder="/caminho/para/certificado.pfx"
-                    value={sicoobCertPath}
-                    disabled={!sicoobEditing && !!sicoobCertPath && sicoobLoaded}
-                    onChange={(e) => setSicoobCertPath(e.target.value)}
-                  />
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Certificado Digital (.PFX)</label>
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      'flex flex-1 items-center gap-2 rounded-lg border px-3 py-2.5 text-sm',
+                      sicoobCertPath ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 bg-gray-50 text-gray-400',
+                    )}>
+                      {sicoobCertPath ? (
+                        <>
+                          <Shield className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">{sicoobCertName || 'certificado.pfx'}</span>
+                        </>
+                      ) : (
+                        <span>Nenhum certificado selecionado</span>
+                      )}
+                    </div>
+                    <label className={cn(
+                      'flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors',
+                      sicoobCertUploading && 'opacity-50 pointer-events-none',
+                    )}>
+                      <Upload className="h-4 w-4" />
+                      {sicoobCertUploading ? 'Enviando...' : sicoobCertPath ? 'Trocar' : 'Selecionar'}
+                      <input
+                        type="file"
+                        accept=".pfx,.p12"
+                        className="hidden"
+                        disabled={sicoobCertUploading}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setSicoobCertUploading(true);
+                          try {
+                            const result = await api.uploadSicoobCertificate(file);
+                            setSicoobCertPath(result.path);
+                            setSicoobCertName(result.filename);
+                            setSicoobMsg('Certificado enviado com sucesso.');
+                          } catch (err: any) {
+                            setSicoobMsg(err.message || 'Erro ao enviar certificado.');
+                          } finally {
+                            setSicoobCertUploading(false);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Senha do Certificado</label>
@@ -1163,7 +1205,7 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
-              <p className="text-xs text-gray-400">O certificado digital ICP-Brasil (A1 e-CNPJ/e-CPF) é obrigatório para autenticação mTLS com o Sicoob.</p>
+              <p className="text-xs text-gray-400">Certificado digital ICP-Brasil (A1 e-CNPJ/e-CPF) obrigatório para autenticação mTLS com o Sicoob.</p>
 
               {/* Sandbox */}
               <div className="flex items-center gap-3">
