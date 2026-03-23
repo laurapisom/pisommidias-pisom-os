@@ -139,6 +139,11 @@ export class IntegrationsController {
     if (!file) {
       throw new BadRequestException('Nenhum arquivo enviado');
     }
+    // Save the certificate path in the integration record
+    await this.integrationsService.updateSicoobCertificatePath(
+      user.organizationId,
+      file.path,
+    );
     return {
       path: file.path,
       filename: file.originalname,

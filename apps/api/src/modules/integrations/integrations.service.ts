@@ -187,6 +187,21 @@ export class IntegrationsService {
     });
   }
 
+  async updateSicoobCertificatePath(organizationId: string, certificatePath: string) {
+    return this.prisma.integration.upsert({
+      where: { organizationId_provider: { organizationId, provider: 'sicoob' } },
+      create: {
+        organizationId,
+        provider: 'sicoob',
+        apiKey: '',
+        certificatePath,
+        isActive: true,
+        syncStatus: 'idle',
+      },
+      update: { certificatePath },
+    });
+  }
+
   async testSicoobConnection(organizationId: string) {
     const integration = await this.prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: 'sicoob' } },
