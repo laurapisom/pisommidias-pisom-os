@@ -158,10 +158,15 @@ export class SicoobSyncService {
   // ── Helpers ─────────────────────────────────────────────
 
   private buildConfig(integration: any): SicoobConfig {
-    return {
+    const config: SicoobConfig = {
       clientId: integration.clientId,
       accountNumber: integration.accountNumber || '',
     };
+    if (integration.certificatePath) {
+      config.certificatePfx = SicoobService.loadCertificate(integration.certificatePath);
+      config.certificatePass = integration.certificatePass || undefined;
+    }
+    return config;
   }
 
   private async findSicoobBankAccount(organizationId: string) {

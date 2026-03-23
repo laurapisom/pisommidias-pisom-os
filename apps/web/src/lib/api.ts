@@ -540,6 +540,8 @@ class ApiClient {
   saveSicoobIntegration(data: {
     clientId: string;
     accountNumber: string;
+    certificatePath?: string;
+    certificatePass?: string;
     sandbox?: boolean;
   }) {
     return this.post<any>('/integrations/sicoob', data);

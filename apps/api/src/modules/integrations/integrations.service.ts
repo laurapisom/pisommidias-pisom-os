@@ -145,7 +145,10 @@ export class IntegrationsService {
       where: { organizationId_provider: { organizationId, provider: 'sicoob' } },
     });
     if (!integration) return null;
-    return integration;
+    return {
+      ...integration,
+      certificatePass: integration.certificatePass ? '••••••••' : null,
+    };
   }
 
   async saveSicoobIntegration(
@@ -153,9 +156,19 @@ export class IntegrationsService {
     data: {
       clientId: string;
       accountNumber: string;
+      certificatePath?: string;
+      certificatePass?: string;
       sandbox?: boolean;
     },
   ) {
+    const updateData: any = {
+      clientId: data.clientId,
+      accountNumber: data.accountNumber,
+      sandbox: data.sandbox ?? false,
+    };
+    if (data.certificatePath !== undefined) updateData.certificatePath = data.certificatePath;
+    if (data.certificatePass !== undefined) updateData.certificatePass = data.certificatePass;
+
     return this.prisma.integration.upsert({
       where: { organizationId_provider: { organizationId, provider: 'sicoob' } },
       create: {
@@ -164,15 +177,13 @@ export class IntegrationsService {
         apiKey: '',
         clientId: data.clientId,
         accountNumber: data.accountNumber,
+        certificatePath: data.certificatePath,
+        certificatePass: data.certificatePass,
         sandbox: data.sandbox ?? false,
         isActive: true,
         syncStatus: 'idle',
       },
-      update: {
-        clientId: data.clientId,
-        accountNumber: data.accountNumber,
-        sandbox: data.sandbox ?? false,
-      },
+      update: updateData,
     });
   }
 
@@ -185,10 +196,14 @@ export class IntegrationsService {
       throw new NotFoundException('Integração Sicoob não configurada');
     }
 
-    const config = {
+    const config: any = {
       clientId: integration.clientId!,
       accountNumber: integration.accountNumber || '',
     };
+    if (integration.certificatePath) {
+      config.certificatePfx = SicoobService.loadCertificate(integration.certificatePath);
+      config.certificatePass = integration.certificatePass || undefined;
+    }
 
     const success = await this.sicoobService.testConnection(config, integration.sandbox);
 
@@ -196,7 +211,7 @@ export class IntegrationsService {
       success,
       message: success
         ? 'Conexão estabelecida com sucesso'
-        : 'Falha ao conectar com a API do Sicoob. Verifique suas credenciais e certificado.',
+        : 'Falha ao conectar com a API do Sicoob. Verifique o Client ID, certificado e conta corrente.',
     };
   }
 

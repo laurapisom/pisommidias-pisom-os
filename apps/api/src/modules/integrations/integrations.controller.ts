@@ -86,6 +86,8 @@ export class IntegrationsController {
     @Body() body: {
       clientId: string;
       accountNumber: string;
+      certificatePath?: string;
+      certificatePass?: string;
       sandbox?: boolean;
     },
   ) {

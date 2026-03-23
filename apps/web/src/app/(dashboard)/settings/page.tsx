@@ -129,6 +129,8 @@ export default function SettingsPage() {
   // Sicoob state
   const [sicoobClientId, setSicoobClientId] = useState('');
   const [sicoobAccount, setSicoobAccount] = useState('');
+  const [sicoobCertPath, setSicoobCertPath] = useState('');
+  const [sicoobCertPass, setSicoobCertPass] = useState('');
   const [sicoobSandbox, setSicoobSandbox] = useState(false);
   const [sicoobSaving, setSicoobSaving] = useState(false);
   const [sicoobMsg, setSicoobMsg] = useState('');
@@ -194,6 +196,8 @@ export default function SettingsPage() {
         if (settings) {
           setSicoobClientId(settings.clientId || '');
           setSicoobAccount(settings.accountNumber || '');
+          setSicoobCertPath(settings.certificatePath || '');
+          if (settings.certificatePass) setSicoobCertPass(settings.certificatePass);
           setSicoobSandbox(settings.sandbox ?? false);
         }
         setSicoobSyncStatus(status.syncStatus);
@@ -1134,6 +1138,33 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Certificado Digital */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Caminho do Certificado (.PFX)</label>
+                  <input
+                    type="text"
+                    className={cn(inputClass, !sicoobEditing && sicoobCertPath && 'bg-gray-50 text-gray-500')}
+                    placeholder="/caminho/para/certificado.pfx"
+                    value={sicoobCertPath}
+                    disabled={!sicoobEditing && !!sicoobCertPath && sicoobLoaded}
+                    onChange={(e) => setSicoobCertPath(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Senha do Certificado</label>
+                  <input
+                    type="password"
+                    className={cn(inputClass, !sicoobEditing && sicoobCertPass && 'bg-gray-50 text-gray-500')}
+                    placeholder="Senha do .PFX"
+                    value={sicoobCertPass}
+                    disabled={!sicoobEditing && !!sicoobCertPass && sicoobLoaded}
+                    onChange={(e) => setSicoobCertPass(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">O certificado digital ICP-Brasil (A1 e-CNPJ/e-CPF) é obrigatório para autenticação mTLS com o Sicoob.</p>
+
               {/* Sandbox */}
               <div className="flex items-center gap-3">
                 <label className="relative inline-flex cursor-pointer items-center">
@@ -1165,6 +1196,8 @@ export default function SettingsPage() {
                           await api.saveSicoobIntegration({
                             clientId: sicoobClientId,
                             accountNumber: sicoobAccount,
+                            certificatePath: sicoobCertPath || undefined,
+                            certificatePass: sicoobCertPass || undefined,
                             sandbox: sicoobSandbox,
                           });
                           setSicoobMsg('Credenciais salvas com sucesso.');
