@@ -128,7 +128,7 @@ export class SicoobService {
     const body = new URLSearchParams({
       grant_type: 'client_credentials',
       client_id: config.clientId,
-      scope: 'cco_consulta',
+      scope: 'cco_consulta cco_saldo cco_extrato',
     });
 
     const res = await this.httpsRequest(tokenUrl, {
@@ -163,6 +163,7 @@ export class SicoobService {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'x-sicoob-clientid': config.clientId,
         client_id: config.clientId,
       },
       pfx: config.certificatePfx,
@@ -227,25 +228,38 @@ export class SicoobService {
     endDate: string,
     sandbox = false,
   ): Promise<SicoobTransaction[]> {
-    const params = new URLSearchParams({
-      numeroContaCorrente: config.accountNumber,
-      dataInicio: startDate,
-      dataFim: endDate,
-    });
+    // Sicoob API uses month/year path params for extrato
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const allTransactions: SicoobTransaction[] = [];
 
-    const data = await this.httpGet<any>(
-      `/conta-corrente/v4/extrato?${params.toString()}`,
-      config,
-      sandbox,
-    );
+    // Iterate through each month in the range
+    const current = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
 
-    const transactions = data.transacoes || data.resultado || data || [];
-    if (!Array.isArray(transactions)) {
-      this.logger.warn('Unexpected statement response format');
-      return [];
+    while (current <= endMonth) {
+      const mes = current.getMonth() + 1; // 1-12
+      const ano = current.getFullYear();
+
+      try {
+        const data = await this.httpGet<any>(
+          `/conta-corrente/v4/extrato/${mes}/${ano}?numeroContaCorrente=${config.accountNumber}`,
+          config,
+          sandbox,
+        );
+
+        const transactions = data.transacoes || data.resultado || data || [];
+        if (Array.isArray(transactions)) {
+          allTransactions.push(...transactions.map((tx: any) => this.mapTransaction(tx)));
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to fetch statement for ${mes}/${ano}: ${error.message}`);
+      }
+
+      current.setMonth(current.getMonth() + 1);
     }
 
-    return transactions.map((tx: any) => this.mapTransaction(tx));
+    return allTransactions;
   }
 
   private mapTransaction(tx: any): SicoobTransaction {
