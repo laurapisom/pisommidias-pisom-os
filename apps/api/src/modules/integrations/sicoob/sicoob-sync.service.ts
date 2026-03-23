@@ -162,7 +162,10 @@ export class SicoobSyncService {
       clientId: integration.clientId,
       accountNumber: integration.accountNumber || '',
     };
-    if (integration.certificatePath) {
+    if (integration.certificateData) {
+      config.certificatePfx = Buffer.from(integration.certificateData, 'base64');
+      config.certificatePass = integration.certificatePass || undefined;
+    } else if (integration.certificatePath) {
       config.certificatePfx = SicoobService.loadCertificate(integration.certificatePath);
       config.certificatePass = integration.certificatePass || undefined;
     }

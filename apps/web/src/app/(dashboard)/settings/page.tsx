@@ -1179,7 +1179,7 @@ export default function SettingsPage() {
                           setSicoobCertUploading(true);
                           try {
                             const result = await api.uploadSicoobCertificate(file);
-                            setSicoobCertPath(result.path);
+                            setSicoobCertPath(result.filename);
                             setSicoobCertName(result.filename);
                             setSicoobMsg('Certificado enviado com sucesso.');
                           } catch (err: any) {

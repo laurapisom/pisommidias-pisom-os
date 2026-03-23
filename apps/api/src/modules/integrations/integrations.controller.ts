@@ -17,23 +17,6 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from './integrations.service';
 import * as path from 'path';
-import * as fs from 'fs';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const multer = require('multer');
-
-const certificateStorage = multer.diskStorage({
-  destination: (_req: any, _file: any, cb: any) => {
-    const dir = path.join(process.cwd(), 'uploads', 'certificates');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req: any, file: any, cb: any) => {
-    const orgId = req.user?.organizationId || 'unknown';
-    const ext = path.extname(file.originalname) || '.pfx';
-    cb(null, `sicoob-${orgId}${ext}`);
-  },
-});
 
 @ApiTags('Integrations')
 @ApiBearerAuth()
@@ -120,7 +103,7 @@ export class IntegrationsController {
   @ApiOperation({ summary: 'Upload Sicoob PFX certificate' })
   @UseInterceptors(
     FileInterceptor('certificate', {
-      storage: certificateStorage,
+      storage: require('multer').memoryStorage(),
       fileFilter: (_req: any, file: any, cb: any) => {
         const ext = path.extname(file.originalname).toLowerCase();
         if (['.pfx', '.p12'].includes(ext)) {
@@ -139,13 +122,13 @@ export class IntegrationsController {
     if (!file) {
       throw new BadRequestException('Nenhum arquivo enviado');
     }
-    // Save the certificate path in the integration record
-    await this.integrationsService.updateSicoobCertificatePath(
+    const base64Data = file.buffer.toString('base64');
+    await this.integrationsService.updateSicoobCertificateData(
       user.organizationId,
-      file.path,
+      base64Data,
+      file.originalname,
     );
     return {
-      path: file.path,
       filename: file.originalname,
       message: 'Certificado enviado com sucesso',
     };

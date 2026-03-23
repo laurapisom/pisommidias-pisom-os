@@ -187,18 +187,19 @@ export class IntegrationsService {
     });
   }
 
-  async updateSicoobCertificatePath(organizationId: string, certificatePath: string) {
+  async updateSicoobCertificateData(organizationId: string, certificateData: string, filename: string) {
     return this.prisma.integration.upsert({
       where: { organizationId_provider: { organizationId, provider: 'sicoob' } },
       create: {
         organizationId,
         provider: 'sicoob',
         apiKey: '',
-        certificatePath,
+        certificateData,
+        certificatePath: filename,
         isActive: true,
         syncStatus: 'idle',
       },
-      update: { certificatePath },
+      update: { certificateData, certificatePath: filename },
     });
   }
 
@@ -215,7 +216,10 @@ export class IntegrationsService {
       clientId: integration.clientId!,
       accountNumber: integration.accountNumber || '',
     };
-    if (integration.certificatePath) {
+    if (integration.certificateData) {
+      config.certificatePfx = Buffer.from(integration.certificateData, 'base64');
+      config.certificatePass = integration.certificatePass || undefined;
+    } else if (integration.certificatePath) {
       config.certificatePfx = SicoobService.loadCertificate(integration.certificatePath);
       config.certificatePass = integration.certificatePass || undefined;
     }

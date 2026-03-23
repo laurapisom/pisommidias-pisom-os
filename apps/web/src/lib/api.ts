@@ -547,7 +547,7 @@ class ApiClient {
     return this.post<any>('/integrations/sicoob', data);
   }
 
-  async uploadSicoobCertificate(file: File): Promise<{ path: string; filename: string; message: string }> {
+  async uploadSicoobCertificate(file: File): Promise<{ filename: string; message: string }> {
     const token = this.getToken();
     const formData = new FormData();
     formData.append('certificate', file);
