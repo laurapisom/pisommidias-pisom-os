@@ -1164,7 +1164,7 @@ export default function SettingsPage() {
                     </div>
                     <label className={cn(
                       'flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors',
-                      sicoobCertUploading && 'opacity-50 pointer-events-none',
+                      (sicoobCertUploading || (!sicoobEditing && !!sicoobCertPath && sicoobLoaded)) && 'opacity-50 pointer-events-none',
                     )}>
                       <Upload className="h-4 w-4" />
                       {sicoobCertUploading ? 'Enviando...' : sicoobCertPath ? 'Trocar' : 'Selecionar'}
@@ -1172,7 +1172,7 @@ export default function SettingsPage() {
                         type="file"
                         accept=".pfx,.p12"
                         className="hidden"
-                        disabled={sicoobCertUploading}
+                        disabled={sicoobCertUploading || (!sicoobEditing && !!sicoobCertPath && sicoobLoaded)}
                         onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
