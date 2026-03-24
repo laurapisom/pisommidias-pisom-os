@@ -479,8 +479,8 @@ class ApiClient {
     return this.post<{ success: boolean; message: string }>('/integrations/asaas/test');
   }
 
-  triggerAsaasSync() {
-    return this.post<{ message: string }>('/integrations/asaas/sync');
+  triggerAsaasSync(full = false) {
+    return this.post<{ message: string }>(`/integrations/asaas/sync${full ? '?full=true' : ''}`);
   }
 
   cancelAsaasSync() {

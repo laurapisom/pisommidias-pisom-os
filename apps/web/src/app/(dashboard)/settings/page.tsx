@@ -1035,25 +1035,31 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-3">
+              {/* Sync result detail (shown after sync finishes) */}
+              {asaasSyncStatus === 'success' && asaasSyncDetail && (
+                <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+                  {asaasSyncDetail}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   className={cn(btnPrimary, 'flex items-center gap-2')}
                   disabled={asaasSyncing || asaasSyncStatus === 'syncing'}
                   onClick={async () => {
-                    if (asaasSyncing) return; // Prevent multiple clicks
+                    if (asaasSyncing) return;
                     setAsaasSyncing(true);
                     setAsaasSyncError(null);
                     setAsaasSyncProgress(0);
                     setAsaasSyncDetail('');
                     try {
-                      await api.triggerAsaasSync();
+                      await api.triggerAsaasSync(false);
                       setAsaasSyncStatus('syncing');
-                      // Poll for status with error counter
                       let pollErrors = 0;
                       const poll = setInterval(async () => {
                         try {
                           const status = await api.getAsaasSyncStatus();
-                          pollErrors = 0; // Reset on success
+                          pollErrors = 0;
                           setAsaasSyncStatus(status.syncStatus);
                           setAsaasLastSync(status.lastSyncAt);
                           setAsaasSyncError(status.syncError);
@@ -1082,6 +1088,53 @@ export default function SettingsPage() {
                   <RefreshCw className={cn('h-4 w-4', asaasSyncing && 'animate-spin')} />
                   {asaasSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
                 </button>
+
+                {!asaasSyncing && asaasSyncStatus !== 'syncing' && asaasLastSync && (
+                  <button
+                    className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    onClick={async () => {
+                      if (asaasSyncing) return;
+                      setAsaasSyncing(true);
+                      setAsaasSyncError(null);
+                      setAsaasSyncProgress(0);
+                      setAsaasSyncDetail('');
+                      try {
+                        await api.triggerAsaasSync(true);
+                        setAsaasSyncStatus('syncing');
+                        let pollErrors = 0;
+                        const poll = setInterval(async () => {
+                          try {
+                            const status = await api.getAsaasSyncStatus();
+                            pollErrors = 0;
+                            setAsaasSyncStatus(status.syncStatus);
+                            setAsaasLastSync(status.lastSyncAt);
+                            setAsaasSyncError(status.syncError);
+                            setAsaasSyncProgress(status.syncProgress || 0);
+                            setAsaasSyncDetail(status.syncDetail || '');
+                            if (status.syncStatus !== 'syncing') {
+                              clearInterval(poll);
+                              setAsaasSyncing(false);
+                            }
+                          } catch (pollErr: any) {
+                            pollErrors++;
+                            if (pollErrors >= 5) {
+                              clearInterval(poll);
+                              setAsaasSyncing(false);
+                              setAsaasSyncStatus('error');
+                              setAsaasSyncError('Conexão perdida ao acompanhar sincronização.');
+                            }
+                          }
+                        }, 3000);
+                      } catch (err: any) {
+                        setAsaasSyncError(err.message || 'Erro ao iniciar sincronização.');
+                        setAsaasSyncing(false);
+                      }
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Sync Completa
+                  </button>
+                )}
 
                 {asaasSyncStatus === 'syncing' && (
                   <button

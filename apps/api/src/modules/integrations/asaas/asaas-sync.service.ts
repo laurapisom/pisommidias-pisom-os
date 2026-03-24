@@ -182,7 +182,9 @@ export class AsaasSyncService {
           syncError: null,
           syncProgress: 100,
           syncPhase: 'done',
-          syncDetail: `Sincronização concluída: ${customerCount} clientes, ${subscriptionCount} assinaturas, ${paymentCount} cobranças, ${expenseCount} despesas${expenseSkipped ? ' (despesas ignoradas - sem permissão)' : ''}`,
+          syncDetail: grandTotal === 0
+            ? `Nenhum registro encontrado no Asaas${dateFilter ? ` desde ${dateFilter}. Use "Sync Completa" para reimportar tudo.` : '. Verifique se a API Key e o modo (sandbox/produção) estão corretos.'}`
+            : `Sincronização concluída: ${customerCount} clientes, ${subscriptionCount} assinaturas, ${paymentCount} cobranças, ${expenseCount} despesas${expenseSkipped ? ' (despesas ignoradas - sem permissão)' : ''}`,
         },
       });
 

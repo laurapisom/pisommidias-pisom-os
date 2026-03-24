@@ -53,8 +53,11 @@ export class IntegrationsController {
 
   @Post('asaas/sync')
   @ApiOperation({ summary: 'Trigger Asaas sync' })
-  triggerAsaasSync(@CurrentUser() user: any) {
-    return this.integrationsService.triggerSync(user.organizationId);
+  triggerAsaasSync(
+    @CurrentUser() user: any,
+    @Query('full') full?: string,
+  ) {
+    return this.integrationsService.triggerSync(user.organizationId, full === 'true');
   }
 
   @Post('asaas/sync/cancel')

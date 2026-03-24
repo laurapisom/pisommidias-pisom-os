@@ -87,7 +87,7 @@ export class IntegrationsService {
     };
   }
 
-  async triggerSync(organizationId: string) {
+  async triggerSync(organizationId: string, fullSync = false) {
     const integration = await this.prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: 'asaas' } },
     });
@@ -100,12 +100,20 @@ export class IntegrationsService {
       throw new BadRequestException('Sincronização já em andamento');
     }
 
+    // Full sync: reset lastSyncAt so ALL data is fetched (not just new since last sync)
+    if (fullSync && integration.lastSyncAt) {
+      await this.prisma.integration.update({
+        where: { id: integration.id },
+        data: { lastSyncAt: null },
+      });
+    }
+
     // Fire and forget - sync runs in background
-    this.asaasSyncService.syncAll(organizationId).catch((err) => {
+    this.asaasSyncService.syncAll(organizationId).catch(() => {
       // Error is already persisted to DB by syncAll
     });
 
-    return { message: 'Sincronização iniciada' };
+    return { message: fullSync ? 'Sincronização completa iniciada (todos os dados)' : 'Sincronização iniciada' };
   }
 
   async cancelSync(organizationId: string) {
