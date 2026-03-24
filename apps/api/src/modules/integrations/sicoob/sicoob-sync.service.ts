@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { SicoobService, SicoobConfig } from './sicoob.service';
 import { SicoobReconciliationService } from './sicoob-reconciliation.service';
-import { validatePfxCertificate, translateConnectionError } from './certificate-validator';
+import { loadPfxCertificate, translateConnectionError } from './certificate-validator';
 
 @Injectable()
 export class SicoobSyncService {
@@ -117,12 +117,13 @@ export class SicoobSyncService {
       config.certificatePass = integration.certificatePass?.trim() || undefined;
     }
 
-    // Validate certificate before proceeding
+    // Load and validate certificate (auto-converts legacy format)
     if (config.certificatePfx) {
-      const validation = validatePfxCertificate(config.certificatePfx, config.certificatePass);
-      if (!validation.valid) {
-        throw new Error(validation.error!);
+      const loaded = loadPfxCertificate(config.certificatePfx, config.certificatePass);
+      if (!loaded.valid) {
+        throw new Error(loaded.error);
       }
+      config.tlsOptions = loaded.tlsOptions;
     } else {
       throw new Error('Nenhum certificado digital configurado. Faça upload do certificado PFX antes de sincronizar.');
     }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as https from 'https';
 import * as fs from 'fs';
-import { validatePfxCertificate, translateConnectionError } from './certificate-validator';
+import { loadPfxCertificate, translateConnectionError, PfxTlsOptions } from './certificate-validator';
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -10,6 +10,8 @@ export interface SicoobConfig {
   accountNumber: string;
   certificatePfx?: Buffer;
   certificatePass?: string;
+  /** Pre-resolved TLS options (set after loadPfxCertificate succeeds) */
+  tlsOptions?: PfxTlsOptions;
 }
 
 export interface SicoobTransaction {
@@ -50,8 +52,7 @@ export class SicoobService {
       method: string;
       headers: Record<string, string>;
       body?: string;
-      pfx?: Buffer;
-      passphrase?: string;
+      tlsOptions?: PfxTlsOptions;
       timeout?: number;
     },
   ): Promise<{ status: number; body: string }> {
@@ -66,9 +67,16 @@ export class SicoobService {
         timeout: options.timeout || 30000,
       };
 
-      if (options.pfx) {
-        reqOptions.pfx = options.pfx;
-        reqOptions.passphrase = options.passphrase;
+      // Apply TLS options (either pfx+passphrase or cert+key from legacy conversion)
+      if (options.tlsOptions) {
+        if (options.tlsOptions.pfx) {
+          reqOptions.pfx = options.tlsOptions.pfx;
+          reqOptions.passphrase = options.tlsOptions.passphrase;
+        }
+        if (options.tlsOptions.cert) {
+          reqOptions.cert = options.tlsOptions.cert;
+          reqOptions.key = options.tlsOptions.key;
+        }
       }
 
       const req = https.request(reqOptions, (res) => {
@@ -116,8 +124,7 @@ export class SicoobService {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
-      pfx: config.certificatePfx,
-      passphrase: config.certificatePass,
+      tlsOptions: config.tlsOptions,
     });
 
     if (res.status >= 400) {
@@ -151,8 +158,7 @@ export class SicoobService {
         'x-sicoob-clientid': config.clientId,
         client_id: config.clientId,
       },
-      pfx: config.certificatePfx,
-      passphrase: config.certificatePass,
+      tlsOptions: config.tlsOptions,
     });
 
     this.logger.log(`Response ${res.status}: ${res.body.substring(0, 200)}`);
@@ -181,12 +187,13 @@ export class SicoobService {
 
   async testConnection(config: SicoobConfig, sandbox = false): Promise<{ success: boolean; error?: string }> {
     try {
-      // Step 0: Validate certificate before attempting connection
-      if (config.certificatePfx) {
-        const validation = validatePfxCertificate(config.certificatePfx, config.certificatePass);
-        if (!validation.valid) {
-          return { success: false, error: validation.error };
+      // Step 0: Load and validate certificate (auto-converts legacy format)
+      if (config.certificatePfx && !config.tlsOptions) {
+        const loaded = loadPfxCertificate(config.certificatePfx, config.certificatePass);
+        if (!loaded.valid) {
+          return { success: false, error: loaded.error };
         }
+        config.tlsOptions = loaded.tlsOptions;
       }
 
       // Step 1: Test token generation

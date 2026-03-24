@@ -5,7 +5,7 @@ import { AsaasSyncService } from './asaas/asaas-sync.service';
 import { SicoobService } from './sicoob/sicoob.service';
 import { SicoobSyncService } from './sicoob/sicoob-sync.service';
 import { SicoobReconciliationService } from './sicoob/sicoob-reconciliation.service';
-import { validatePfxCertificate } from './sicoob/certificate-validator';
+import { loadPfxCertificate } from './sicoob/certificate-validator';
 
 @Injectable()
 export class IntegrationsService {
@@ -217,8 +217,8 @@ export class IntegrationsService {
     }
 
     const config: any = {
-      clientId: integration.clientId!,
-      accountNumber: integration.accountNumber || '',
+      clientId: integration.clientId!.trim(),
+      accountNumber: (integration.accountNumber || '').trim(),
     };
     if (integration.certificateData) {
       config.certificatePfx = Buffer.from(integration.certificateData, 'base64');
@@ -228,15 +228,16 @@ export class IntegrationsService {
       config.certificatePass = integration.certificatePass?.trim() || undefined;
     }
 
-    // Pre-validate certificate before attempting connection
+    // Load and validate certificate (auto-converts legacy format)
     if (config.certificatePfx) {
-      const validation = validatePfxCertificate(config.certificatePfx, config.certificatePass);
-      if (!validation.valid) {
+      const loaded = loadPfxCertificate(config.certificatePfx, config.certificatePass);
+      if (!loaded.valid) {
         return {
           success: false,
-          message: validation.error!,
+          message: loaded.error,
         };
       }
+      config.tlsOptions = loaded.tlsOptions;
     } else {
       return {
         success: false,

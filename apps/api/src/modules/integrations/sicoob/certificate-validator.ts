@@ -1,66 +1,147 @@
 import * as tls from 'tls';
 import * as crypto from 'crypto';
+import { execFileSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 export interface CertificateValidationResult {
   valid: boolean;
   error?: string;
   errorCode?: 'WRONG_PASSWORD' | 'CORRUPTED' | 'EXPIRED' | 'OPENSSL_LEGACY' | 'INVALID_FORMAT' | 'UNKNOWN';
-  subject?: string;
-  issuer?: string;
-  validFrom?: Date;
-  validTo?: Date;
-  cnpj?: string;
 }
 
 /**
- * Validates a PFX/PKCS12 certificate buffer with the given passphrase.
- * Detects common issues like wrong password, corruption, expiry, and
- * OpenSSL 3.x legacy format incompatibility.
+ * TLS options extracted from a PFX certificate.
+ * Either pfx+passphrase (modern format) or cert+key (converted from legacy).
+ */
+export interface PfxTlsOptions {
+  pfx?: Buffer;
+  passphrase?: string;
+  cert?: string;
+  key?: string;
+}
+
+/**
+ * Validates and loads a PFX certificate buffer.
+ * If the PFX uses legacy OpenSSL algorithms (common with Brazilian ICP-Brasil certs),
+ * automatically converts it using the system openssl CLI with -legacy flag.
+ *
+ * Returns TLS options ready to use with https.Agent or tls.createSecureContext.
+ */
+export function loadPfxCertificate(
+  pfxBuffer: Buffer,
+  passphrase?: string,
+): { valid: true; tlsOptions: PfxTlsOptions } | { valid: false; error: string; errorCode: string } {
+  const pass = passphrase || '';
+
+  // 1. Try loading the PFX directly (works with modern format)
+  try {
+    tls.createSecureContext({ pfx: pfxBuffer, passphrase: pass });
+    return { valid: true, tlsOptions: { pfx: pfxBuffer, passphrase: pass } };
+  } catch (directErr: any) {
+    const msg = (directErr.message || '').toLowerCase();
+
+    // Only attempt legacy conversion for mac verify failure / unsupported algorithm
+    const isLegacyIssue = msg.includes('mac verify failure') ||
+      msg.includes('mac_verify_failure') ||
+      msg.includes('unsupported') ||
+      msg.includes('rc2') ||
+      msg.includes('algorithm');
+
+    if (!isLegacyIssue) {
+      const classified = classifyCertificateError(directErr);
+      return { valid: false, error: classified.error!, errorCode: classified.errorCode || 'UNKNOWN' };
+    }
+  }
+
+  // 2. Try converting legacy PFX to PEM using openssl CLI
+  const tmpDir = os.tmpdir();
+  const tmpPfx = path.join(tmpDir, `sicoob-cert-${Date.now()}.pfx`);
+  const tmpPem = path.join(tmpDir, `sicoob-cert-${Date.now()}.pem`);
+
+  try {
+    fs.writeFileSync(tmpPfx, pfxBuffer, { mode: 0o600 });
+
+    // Convert PFX → PEM with -legacy flag (supports old encryption algorithms)
+    execFileSync('openssl', [
+      'pkcs12', '-in', tmpPfx, '-out', tmpPem, '-nodes', '-legacy',
+      '-passin', `pass:${pass}`,
+    ], { timeout: 10000, stdio: 'pipe' });
+
+    const pemContent = fs.readFileSync(tmpPem, 'utf-8');
+
+    // Extract cert chain and private key from PEM
+    const certs = pemContent.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
+    const keyMatch = pemContent.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA )?PRIVATE KEY-----/);
+
+    if (!certs || !keyMatch) {
+      return {
+        valid: false,
+        error: 'Não foi possível extrair certificado e chave privada do PFX. O arquivo pode estar corrompido.',
+        errorCode: 'CORRUPTED',
+      };
+    }
+
+    const certChain = certs.join('\n');
+    const privateKey = keyMatch[0];
+
+    // Validate the extracted PEM works
+    try {
+      tls.createSecureContext({ cert: certChain, key: privateKey });
+    } catch (pemErr: any) {
+      return {
+        valid: false,
+        error: `Certificado convertido mas inválido: ${pemErr.message}`,
+        errorCode: 'CORRUPTED',
+      };
+    }
+
+    return { valid: true, tlsOptions: { cert: certChain, key: privateKey } };
+  } catch (opensslErr: any) {
+    const errMsg = (opensslErr.stderr?.toString() || opensslErr.message || '').toLowerCase();
+
+    // openssl also reports mac verify failure when password is truly wrong
+    if (errMsg.includes('mac verify failure') || errMsg.includes('mac_verify_failure') || errMsg.includes('bad decrypt')) {
+      return {
+        valid: false,
+        error: 'Senha do certificado incorreta. Verifique se a senha está correta (sem espaços extras).',
+        errorCode: 'WRONG_PASSWORD',
+      };
+    }
+
+    // openssl not found
+    if (opensslErr.code === 'ENOENT') {
+      return {
+        valid: false,
+        error: 'O certificado usa formato legado e o sistema não possui openssl instalado para convertê-lo. '
+          + 'Converta manualmente: openssl pkcs12 -in cert.pfx -out temp.pem -nodes -legacy && '
+          + 'openssl pkcs12 -export -in temp.pem -out cert_novo.pfx',
+        errorCode: 'OPENSSL_LEGACY',
+      };
+    }
+
+    return {
+      valid: false,
+      error: `Erro ao processar o certificado: ${opensslErr.message}`,
+      errorCode: 'UNKNOWN',
+    };
+  } finally {
+    try { fs.unlinkSync(tmpPfx); } catch {}
+    try { fs.unlinkSync(tmpPem); } catch {}
+  }
+}
+
+/**
+ * Validates a PFX certificate (simpler check, returns boolean-style result).
  */
 export function validatePfxCertificate(
   pfxBuffer: Buffer,
   passphrase?: string,
 ): CertificateValidationResult {
-  try {
-    // Attempt to load the PFX — this will throw on bad password/corruption
-    const ctx = tls.createSecureContext({
-      pfx: pfxBuffer,
-      passphrase: passphrase || '',
-    });
-
-    // Try to extract certificate details via the secure context
-    // The createSecureContext succeeding means the PFX is valid and password is correct
-    return { valid: true };
-  } catch (err: any) {
-    return classifyCertificateError(err);
-  }
-}
-
-/**
- * Extracts certificate details (subject, dates, CNPJ) from a PFX buffer.
- * Returns null if extraction fails.
- */
-export function extractPfxInfo(
-  pfxBuffer: Buffer,
-  passphrase?: string,
-): { subject: string; validFrom: Date; validTo: Date; cnpj?: string } | null {
-  try {
-    // Use forge-like approach with Node's built-in crypto
-    // Node 15+ supports X509Certificate
-    if (typeof (crypto as any).X509Certificate === 'function') {
-      const ctx = tls.createSecureContext({
-        pfx: pfxBuffer,
-        passphrase: passphrase || '',
-      });
-
-      // Unfortunately, Node's tls module doesn't expose the cert directly from context.
-      // We rely on the validation passing and return minimal info.
-      return null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  const result = loadPfxCertificate(pfxBuffer, passphrase);
+  if (result.valid) return { valid: true };
+  return { valid: false, error: result.error, errorCode: result.errorCode as any };
 }
 
 /**

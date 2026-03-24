@@ -16,7 +16,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from './integrations.service';
-import { validatePfxCertificate } from './sicoob/certificate-validator';
+import { loadPfxCertificate } from './sicoob/certificate-validator';
 import * as path from 'path';
 
 @ApiTags('Integrations')
@@ -127,9 +127,9 @@ export class IntegrationsController {
 
     // Validate the PFX certificate if a passphrase is provided
     if (body?.passphrase) {
-      const validation = validatePfxCertificate(file.buffer, body.passphrase.trim());
-      if (!validation.valid) {
-        throw new BadRequestException(validation.error);
+      const loaded = loadPfxCertificate(file.buffer, body.passphrase.trim());
+      if (!loaded.valid) {
+        throw new BadRequestException(loaded.error);
       }
     }
 
