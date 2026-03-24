@@ -16,6 +16,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from './integrations.service';
+import { validatePfxCertificate } from './sicoob/certificate-validator';
 import * as path from 'path';
 
 @ApiTags('Integrations')
@@ -118,10 +119,20 @@ export class IntegrationsController {
   async uploadCertificate(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
+    @Body() body: { passphrase?: string },
   ) {
     if (!file) {
       throw new BadRequestException('Nenhum arquivo enviado');
     }
+
+    // Validate the PFX certificate if a passphrase is provided
+    if (body?.passphrase) {
+      const validation = validatePfxCertificate(file.buffer, body.passphrase.trim());
+      if (!validation.valid) {
+        throw new BadRequestException(validation.error);
+      }
+    }
+
     const base64Data = file.buffer.toString('base64');
     await this.integrationsService.updateSicoobCertificateData(
       user.organizationId,

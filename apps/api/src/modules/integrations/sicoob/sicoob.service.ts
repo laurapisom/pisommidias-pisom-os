@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as https from 'https';
 import * as fs from 'fs';
+import { validatePfxCertificate, translateConnectionError } from './certificate-validator';
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -79,10 +80,13 @@ export class SicoobService {
         });
       });
 
-      req.on('error', (err) => reject(err));
+      req.on('error', (err) => {
+        const translated = translateConnectionError(err.message);
+        reject(new Error(translated));
+      });
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error(`Sicoob request timeout after ${options.timeout || 30000}ms`));
+        reject(new Error('Tempo limite excedido ao conectar com o Sicoob. Tente novamente.'));
       });
 
       if (options.body) req.write(options.body);
@@ -177,6 +181,14 @@ export class SicoobService {
 
   async testConnection(config: SicoobConfig, sandbox = false): Promise<{ success: boolean; error?: string }> {
     try {
+      // Step 0: Validate certificate before attempting connection
+      if (config.certificatePfx) {
+        const validation = validatePfxCertificate(config.certificatePfx, config.certificatePass);
+        if (!validation.valid) {
+          return { success: false, error: validation.error };
+        }
+      }
+
       // Step 1: Test token generation
       await this.getAccessToken(config, sandbox);
       this.logger.log('Test: token OK');
@@ -202,7 +214,8 @@ export class SicoobService {
       return { success: true };
     } catch (error) {
       this.logger.error(`Sicoob connection test failed: ${error.message}`);
-      return { success: false, error: error.message };
+      const translatedError = translateConnectionError(error.message);
+      return { success: false, error: translatedError };
     }
   }
 

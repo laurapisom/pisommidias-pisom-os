@@ -595,7 +595,7 @@ export class AsaasSyncService {
     const categoryId = await this.getOrCreateExpenseCategory(organizationId, categoryName);
     const absValue = Math.abs(transaction.value);
     const transactionDate = new Date(transaction.date);
-    const bankAccountId = await this.findAsaasBankAccountId(organizationId);
+    const bankAccountId = await this.findOrCreateAsaasBankAccount(organizationId);
 
     const data = {
       title: transaction.description || `${categoryName} - ${transaction.id}`,
@@ -631,9 +631,9 @@ export class AsaasSyncService {
   private asaasBankAccountId: string | null | undefined = undefined;
   private cashBankAccountId: string | null | undefined = undefined;
 
-  private async findAsaasBankAccountId(organizationId: string): Promise<string | undefined> {
-    if (this.asaasBankAccountId !== undefined) return this.asaasBankAccountId || undefined;
-    const account = await this.prisma.bankAccount.findFirst({
+  private async findOrCreateAsaasBankAccount(organizationId: string): Promise<string> {
+    if (this.asaasBankAccountId !== undefined && this.asaasBankAccountId) return this.asaasBankAccountId;
+    let account = await this.prisma.bankAccount.findFirst({
       where: {
         organizationId,
         isActive: true,
@@ -644,25 +644,52 @@ export class AsaasSyncService {
       },
       select: { id: true },
     });
-    this.asaasBankAccountId = account?.id || null;
-    return account?.id || undefined;
+    if (!account) {
+      this.logger.log(`Auto-creating Asaas bank account for org ${organizationId}`);
+      account = await this.prisma.bankAccount.create({
+        data: {
+          organizationId,
+          name: 'Asaas',
+          type: 'PAYMENT_GATEWAY',
+          initialBalance: 0,
+          color: '#6366f1',
+        },
+        select: { id: true },
+      });
+    }
+    this.asaasBankAccountId = account.id;
+    return account.id;
   }
 
-  private async findCashBankAccountId(organizationId: string): Promise<string | undefined> {
-    if (this.cashBankAccountId !== undefined) return this.cashBankAccountId || undefined;
-    const account = await this.prisma.bankAccount.findFirst({
+  private async findOrCreateCashBankAccount(organizationId: string): Promise<string> {
+    if (this.cashBankAccountId !== undefined && this.cashBankAccountId) return this.cashBankAccountId;
+    let account = await this.prisma.bankAccount.findFirst({
       where: {
         organizationId,
         isActive: true,
         OR: [
           { type: 'CASH' },
           { name: { contains: 'caixa', mode: 'insensitive' } },
+          { name: { contains: 'dinheiro', mode: 'insensitive' } },
         ],
       },
       select: { id: true },
     });
-    this.cashBankAccountId = account?.id || null;
-    return account?.id || undefined;
+    if (!account) {
+      this.logger.log(`Auto-creating Cash bank account for org ${organizationId}`);
+      account = await this.prisma.bankAccount.create({
+        data: {
+          organizationId,
+          name: 'Caixa',
+          type: 'CASH',
+          initialBalance: 0,
+          color: '#10b981',
+        },
+        select: { id: true },
+      });
+    }
+    this.cashBankAccountId = account.id;
+    return account.id;
   }
 
   private async findCompanyId(organizationId: string, asaasCustomerId: string): Promise<string | undefined> {
@@ -692,11 +719,13 @@ export class AsaasSyncService {
     const contractId = payment.subscription
       ? await this.findContractId(organizationId, payment.subscription)
       : undefined;
-    // Recebimentos em dinheiro (UNDEFINED) vão para o caixa físico, não para a conta Asaas
-    const isCashPayment = payment.billingType === 'UNDEFINED';
+
+    // Recebimentos em dinheiro vão para conta Caixa, demais vão para conta Asaas
+    // Dinheiro = billingType UNDEFINED ou status RECEIVED_IN_CASH
+    const isCashPayment = payment.billingType === 'UNDEFINED' || payment.status === 'RECEIVED_IN_CASH';
     const bankAccountId = isCashPayment
-      ? await this.findCashBankAccountId(organizationId)
-      : await this.findAsaasBankAccountId(organizationId);
+      ? await this.findOrCreateCashBankAccount(organizationId)
+      : await this.findOrCreateAsaasBankAccount(organizationId);
 
     const existing = await this.prisma.invoice.findFirst({
       where: { organizationId, asaasPaymentId: payment.id },
@@ -705,6 +734,12 @@ export class AsaasSyncService {
     const status = mapPaymentStatus(payment.status);
     const isPaid = status === 'PAID';
 
+    // paidValue: usar netValue (valor líquido) se disponível, senão usar value (valor bruto)
+    // Sem isso, paidValue fica null e as receitas não aparecem nos relatórios
+    const paidValue = isPaid
+      ? (payment.netValue != null ? payment.netValue : payment.value)
+      : undefined;
+
     const data = {
       status,
       type: contractId ? ('RECURRING' as const) : ('ONE_TIME' as const),
@@ -712,8 +747,8 @@ export class AsaasSyncService {
       totalValue: payment.value,
       dueDate: new Date(payment.dueDate),
       description: payment.description || undefined,
-      paidAt: isPaid && payment.paymentDate ? new Date(payment.paymentDate) : undefined,
-      paidValue: isPaid && payment.netValue != null ? payment.netValue : undefined,
+      paidAt: isPaid && payment.paymentDate ? new Date(payment.paymentDate) : (isPaid ? new Date(payment.dueDate) : undefined),
+      paidValue,
       paymentMethod: payment.billingType || undefined,
       asaasPaymentId: payment.id,
       asaasBillingType: payment.billingType || undefined,

@@ -5,6 +5,7 @@ import { AsaasSyncService } from './asaas/asaas-sync.service';
 import { SicoobService } from './sicoob/sicoob.service';
 import { SicoobSyncService } from './sicoob/sicoob-sync.service';
 import { SicoobReconciliationService } from './sicoob/sicoob-reconciliation.service';
+import { validatePfxCertificate } from './sicoob/certificate-validator';
 
 @Injectable()
 export class IntegrationsService {
@@ -161,13 +162,16 @@ export class IntegrationsService {
       sandbox?: boolean;
     },
   ) {
+    // Trim whitespace from password to avoid accidental spaces
+    const certificatePass = data.certificatePass?.trim() || data.certificatePass;
+
     const updateData: any = {
-      clientId: data.clientId,
-      accountNumber: data.accountNumber,
+      clientId: data.clientId.trim(),
+      accountNumber: data.accountNumber.trim(),
       sandbox: data.sandbox ?? false,
     };
     if (data.certificatePath !== undefined) updateData.certificatePath = data.certificatePath;
-    if (data.certificatePass !== undefined) updateData.certificatePass = data.certificatePass;
+    if (certificatePass !== undefined) updateData.certificatePass = certificatePass;
 
     return this.prisma.integration.upsert({
       where: { organizationId_provider: { organizationId, provider: 'sicoob' } },
@@ -175,10 +179,10 @@ export class IntegrationsService {
         organizationId,
         provider: 'sicoob',
         apiKey: '',
-        clientId: data.clientId,
-        accountNumber: data.accountNumber,
+        clientId: data.clientId.trim(),
+        accountNumber: data.accountNumber.trim(),
         certificatePath: data.certificatePath,
-        certificatePass: data.certificatePass,
+        certificatePass: certificatePass,
         sandbox: data.sandbox ?? false,
         isActive: true,
         syncStatus: 'idle',
@@ -218,10 +222,26 @@ export class IntegrationsService {
     };
     if (integration.certificateData) {
       config.certificatePfx = Buffer.from(integration.certificateData, 'base64');
-      config.certificatePass = integration.certificatePass || undefined;
+      config.certificatePass = integration.certificatePass?.trim() || undefined;
     } else if (integration.certificatePath) {
       config.certificatePfx = SicoobService.loadCertificate(integration.certificatePath);
-      config.certificatePass = integration.certificatePass || undefined;
+      config.certificatePass = integration.certificatePass?.trim() || undefined;
+    }
+
+    // Pre-validate certificate before attempting connection
+    if (config.certificatePfx) {
+      const validation = validatePfxCertificate(config.certificatePfx, config.certificatePass);
+      if (!validation.valid) {
+        return {
+          success: false,
+          message: validation.error!,
+        };
+      }
+    } else {
+      return {
+        success: false,
+        message: 'Nenhum certificado digital configurado. Faça upload do certificado PFX antes de testar a conexão.',
+      };
     }
 
     const result = await this.sicoobService.testConnection(config, integration.sandbox);

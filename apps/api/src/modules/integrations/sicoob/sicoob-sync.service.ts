@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { SicoobService, SicoobConfig } from './sicoob.service';
 import { SicoobReconciliationService } from './sicoob-reconciliation.service';
+import { validatePfxCertificate, translateConnectionError } from './certificate-validator';
 
 @Injectable()
 export class SicoobSyncService {
@@ -50,11 +51,8 @@ export class SicoobSyncService {
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
 
-      // Find Sicoob bank account
-      const bankAccount = await this.findSicoobBankAccount(organizationId);
-      if (!bankAccount) {
-        throw new Error('Conta bancária Sicoob não encontrada. Crie uma conta do tipo "Conta Corrente" com o nome "Sicoob" antes de sincronizar.');
-      }
+      // Find or auto-create Sicoob bank account
+      const bankAccount = await this.findOrCreateSicoobBankAccount(organizationId);
 
       // ── PHASE 1: Bank Statement (0-80%) ────────────────
       await this.checkCancelled(integration.id);
@@ -87,18 +85,19 @@ export class SicoobSyncService {
       return { statements: statementCount, reconciled: reconciledCount };
     } catch (error) {
       const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
+      const translatedError = isCancelled ? null : translateConnectionError(error.message);
       await this.prisma.integration.update({
         where: { id: integration.id },
         data: {
           syncStatus: isCancelled ? 'cancelled' : 'error',
-          syncError: isCancelled ? null : error.message,
+          syncError: translatedError,
           syncProgress: null,
           syncPhase: null,
           syncDetail: null,
           syncCancelled: false,
         },
       });
-      if (!isCancelled) throw error;
+      if (!isCancelled) throw new Error(translatedError || error.message);
       return { statements: 0, reconciled: 0 };
     }
   }
@@ -107,21 +106,32 @@ export class SicoobSyncService {
 
   private buildConfig(integration: any): SicoobConfig {
     const config: SicoobConfig = {
-      clientId: integration.clientId,
-      accountNumber: integration.accountNumber || '',
+      clientId: integration.clientId?.trim(),
+      accountNumber: (integration.accountNumber || '').trim(),
     };
     if (integration.certificateData) {
       config.certificatePfx = Buffer.from(integration.certificateData, 'base64');
-      config.certificatePass = integration.certificatePass || undefined;
+      config.certificatePass = integration.certificatePass?.trim() || undefined;
     } else if (integration.certificatePath) {
       config.certificatePfx = SicoobService.loadCertificate(integration.certificatePath);
-      config.certificatePass = integration.certificatePass || undefined;
+      config.certificatePass = integration.certificatePass?.trim() || undefined;
     }
+
+    // Validate certificate before proceeding
+    if (config.certificatePfx) {
+      const validation = validatePfxCertificate(config.certificatePfx, config.certificatePass);
+      if (!validation.valid) {
+        throw new Error(validation.error!);
+      }
+    } else {
+      throw new Error('Nenhum certificado digital configurado. Faça upload do certificado PFX antes de sincronizar.');
+    }
+
     return config;
   }
 
-  private async findSicoobBankAccount(organizationId: string) {
-    return this.prisma.bankAccount.findFirst({
+  private async findOrCreateSicoobBankAccount(organizationId: string) {
+    let account = await this.prisma.bankAccount.findFirst({
       where: {
         organizationId,
         isActive: true,
@@ -133,6 +143,21 @@ export class SicoobSyncService {
       },
       select: { id: true },
     });
+    if (!account) {
+      this.logger.log(`Auto-creating Sicoob bank account for org ${organizationId}`);
+      account = await this.prisma.bankAccount.create({
+        data: {
+          organizationId,
+          name: 'Sicoob',
+          type: 'CHECKING',
+          bank: '756',
+          initialBalance: 0,
+          color: '#003641',
+        },
+        select: { id: true },
+      });
+    }
+    return account;
   }
 
   private async checkCancelled(integrationId: string): Promise<void> {

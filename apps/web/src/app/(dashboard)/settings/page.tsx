@@ -1308,11 +1308,11 @@ export default function SettingsPage() {
               {sicoobMsg && <p className="text-sm text-gray-600">{sicoobMsg}</p>}
               {sicoobTestResult && (
                 <div className={cn(
-                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
+                  'flex gap-2 rounded-lg px-3 py-2 text-sm',
                   sicoobTestResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
                 )}>
-                  {sicoobTestResult.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                  {sicoobTestResult.message}
+                  {sicoobTestResult.success ? <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" /> : <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />}
+                  <span className="whitespace-pre-wrap">{sicoobTestResult.message}</span>
                 </div>
               )}
             </div>

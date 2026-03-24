@@ -148,13 +148,17 @@ export class AccountsService {
     });
 
     // 2) Depois: sobrescrever as faturas em dinheiro → conta caixa
+    // Inclui billingType UNDEFINED e pagamentos recebidos em dinheiro (RECEIVED_IN_CASH)
     let cashInvoicesLinked = 0;
     if (cashAccount) {
       const cashResult = await this.prisma.invoice.updateMany({
         where: {
           organizationId,
           asaasPaymentId: { not: null },
-          paymentMethod: 'UNDEFINED',
+          OR: [
+            { paymentMethod: 'UNDEFINED' },
+            { asaasBillingType: 'UNDEFINED' },
+          ],
         },
         data: { bankAccountId: cashAccount.id },
       });
