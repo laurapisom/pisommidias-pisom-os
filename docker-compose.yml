@@ -25,7 +25,8 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://pisom:${DB_PASSWORD:-TroqueEstaSenha123}@db:5432/pisom_os
+      DATABASE_URL: ${DATABASE_URL:-postgresql://pisom:${DB_PASSWORD:-TroqueEstaSenha123}@db:5432/pisom_os}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://pisom:${DB_PASSWORD:-TroqueEstaSenha123}@db:5432/pisom_os}
       JWT_SECRET: ${JWT_SECRET:-troque-por-chave-segura-de-64-caracteres-aqui}
       PORT: 3001
       CORS_ORIGINS: https://sistema.pisommidias.com.br

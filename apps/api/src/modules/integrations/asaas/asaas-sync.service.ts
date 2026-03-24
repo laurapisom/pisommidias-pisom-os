@@ -74,6 +74,14 @@ export class AsaasSyncService {
   private static readonly SYNC_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes max
 
   async syncAll(organizationId: string): Promise<{ customers: number; subscriptions: number; payments: number; expenses: number }> {
+    // Pre-flight: verify DB is reachable before starting long sync
+    try {
+      await this.prisma.executeWithRetry(() => this.prisma.$queryRaw`SELECT 1`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Banco de dados inacessível. Verifique a conexão (DATABASE_URL). Detalhe: ${msg}`);
+    }
+
     const integration = await this.prisma.integration.findUnique({
       where: { organizationId_provider: { organizationId, provider: 'asaas' } },
     });
@@ -293,47 +301,48 @@ export class AsaasSyncService {
   }
 
   private async upsertCompany(organizationId: string, customer: AsaasCustomer) {
-    const existing = await this.prisma.company.findFirst({
-      where: { organizationId, asaasCustomerId: customer.id },
-    });
-
-    const data = {
-      name: customer.personType === 'JURIDICA' && customer.company
-        ? customer.company
-        : customer.name,
-      cnpj: customer.cpfCnpj || undefined,
-      phone: customer.mobilePhone || customer.phone || undefined,
-      address: [customer.address, customer.addressNumber].filter(Boolean).join(', ') || undefined,
-      city: customer.cityName || undefined,
-      state: customer.state || undefined,
-      asaasCustomerId: customer.id,
-      isCustomer: true,
-    };
-
-    if (existing) {
-      await this.prisma.company.update({
-        where: { id: existing.id },
-        data,
+    await this.prisma.executeWithRetry(async () => {
+      const existing = await this.prisma.company.findFirst({
+        where: { organizationId, asaasCustomerId: customer.id },
       });
-    } else {
-      // Try to match by CNPJ before creating
-      const byDoc = customer.cpfCnpj
-        ? await this.prisma.company.findFirst({
-            where: { organizationId, cnpj: customer.cpfCnpj },
-          })
-        : null;
 
-      if (byDoc) {
+      const data = {
+        name: customer.personType === 'JURIDICA' && customer.company
+          ? customer.company
+          : customer.name,
+        cnpj: customer.cpfCnpj || undefined,
+        phone: customer.mobilePhone || customer.phone || undefined,
+        address: [customer.address, customer.addressNumber].filter(Boolean).join(', ') || undefined,
+        city: customer.cityName || undefined,
+        state: customer.state || undefined,
+        asaasCustomerId: customer.id,
+        isCustomer: true,
+      };
+
+      if (existing) {
         await this.prisma.company.update({
-          where: { id: byDoc.id },
+          where: { id: existing.id },
           data,
         });
       } else {
-        await this.prisma.company.create({
-          data: { ...data, organizationId },
-        });
+        const byDoc = customer.cpfCnpj
+          ? await this.prisma.company.findFirst({
+              where: { organizationId, cnpj: customer.cpfCnpj },
+            })
+          : null;
+
+        if (byDoc) {
+          await this.prisma.company.update({
+            where: { id: byDoc.id },
+            data,
+          });
+        } else {
+          await this.prisma.company.create({
+            data: { ...data, organizationId },
+          });
+        }
       }
-    }
+    });
   }
 
   private async syncSubscriptions(
@@ -383,37 +392,39 @@ export class AsaasSyncService {
   }
 
   private async upsertContract(organizationId: string, sub: AsaasSubscription) {
-    const company = await this.prisma.company.findFirst({
-      where: { organizationId, asaasCustomerId: sub.customer },
-    });
-
-    const existing = await this.prisma.contract.findFirst({
-      where: { organizationId, asaasSubscriptionId: sub.id },
-    });
-
-    const data = {
-      title: sub.description || `Assinatura Asaas #${sub.id}`,
-      value: sub.value,
-      status: mapSubscriptionStatus(sub.status),
-      billingCycle: mapCycle(sub.cycle),
-      nextBillingDate: sub.nextDueDate ? new Date(sub.nextDueDate) : undefined,
-      startDate: new Date(sub.dateCreated),
-      endDate: sub.endDate ? new Date(sub.endDate) : undefined,
-      asaasCustomerId: sub.customer,
-      asaasSubscriptionId: sub.id,
-      companyId: company?.id || undefined,
-    };
-
-    if (existing) {
-      await this.prisma.contract.update({
-        where: { id: existing.id },
-        data,
+    await this.prisma.executeWithRetry(async () => {
+      const company = await this.prisma.company.findFirst({
+        where: { organizationId, asaasCustomerId: sub.customer },
       });
-    } else {
-      await this.prisma.contract.create({
-        data: { ...data, organizationId, startDate: data.startDate },
+
+      const existing = await this.prisma.contract.findFirst({
+        where: { organizationId, asaasSubscriptionId: sub.id },
       });
-    }
+
+      const data = {
+        title: sub.description || `Assinatura Asaas #${sub.id}`,
+        value: sub.value,
+        status: mapSubscriptionStatus(sub.status),
+        billingCycle: mapCycle(sub.cycle),
+        nextBillingDate: sub.nextDueDate ? new Date(sub.nextDueDate) : undefined,
+        startDate: new Date(sub.dateCreated),
+        endDate: sub.endDate ? new Date(sub.endDate) : undefined,
+        asaasCustomerId: sub.customer,
+        asaasSubscriptionId: sub.id,
+        companyId: company?.id || undefined,
+      };
+
+      if (existing) {
+        await this.prisma.contract.update({
+          where: { id: existing.id },
+          data,
+        });
+      } else {
+        await this.prisma.contract.create({
+          data: { ...data, organizationId, startDate: data.startDate },
+        });
+      }
+    });
   }
 
   private async syncPayments(
@@ -587,40 +598,42 @@ export class AsaasSyncService {
   }
 
   private async upsertExpense(organizationId: string, transaction: AsaasFinancialTransaction, createdById: string) {
-    const existing = await this.prisma.expense.findUnique({
-      where: { asaasTransactionId: transaction.id },
+    await this.prisma.executeWithRetry(async () => {
+      const existing = await this.prisma.expense.findUnique({
+        where: { asaasTransactionId: transaction.id },
+      });
+
+      const categoryName = this.mapTransactionCategory(transaction.type, transaction.description);
+      const categoryId = await this.getOrCreateExpenseCategory(organizationId, categoryName);
+      const absValue = Math.abs(transaction.value);
+      const transactionDate = new Date(transaction.date);
+      const bankAccountId = await this.findOrCreateAsaasBankAccount(organizationId);
+
+      const data = {
+        title: transaction.description || `${categoryName} - ${transaction.id}`,
+        value: absValue,
+        status: 'PAID' as const,
+        type: 'VARIABLE' as const,
+        dueDate: transactionDate,
+        paidAt: transactionDate,
+        supplier: 'Asaas',
+        categoryId,
+        asaasTransactionId: transaction.id,
+        bankAccountId,
+        notes: transaction.paymentId ? `Ref. cobrança: ${transaction.paymentId}` : undefined,
+      };
+
+      if (existing) {
+        await this.prisma.expense.update({
+          where: { id: existing.id },
+          data,
+        });
+      } else {
+        await this.prisma.expense.create({
+          data: { ...data, organizationId, createdById },
+        });
+      }
     });
-
-    const categoryName = this.mapTransactionCategory(transaction.type, transaction.description);
-    const categoryId = await this.getOrCreateExpenseCategory(organizationId, categoryName);
-    const absValue = Math.abs(transaction.value);
-    const transactionDate = new Date(transaction.date);
-    const bankAccountId = await this.findOrCreateAsaasBankAccount(organizationId);
-
-    const data = {
-      title: transaction.description || `${categoryName} - ${transaction.id}`,
-      value: absValue,
-      status: 'PAID' as const,
-      type: 'VARIABLE' as const,
-      dueDate: transactionDate,
-      paidAt: transactionDate,
-      supplier: 'Asaas',
-      categoryId,
-      asaasTransactionId: transaction.id,
-      bankAccountId,
-      notes: transaction.paymentId ? `Ref. cobrança: ${transaction.paymentId}` : undefined,
-    };
-
-    if (existing) {
-      await this.prisma.expense.update({
-        where: { id: existing.id },
-        data,
-      });
-    } else {
-      await this.prisma.expense.create({
-        data: { ...data, organizationId, createdById },
-      });
-    }
   }
 
   // ─── Invoice Sync ───────────────────────────────────────────────────
@@ -715,60 +728,58 @@ export class AsaasSyncService {
   }
 
   private async upsertInvoice(organizationId: string, payment: AsaasPayment) {
-    const companyId = await this.findCompanyId(organizationId, payment.customer);
-    const contractId = payment.subscription
-      ? await this.findContractId(organizationId, payment.subscription)
-      : undefined;
+    await this.prisma.executeWithRetry(async () => {
+      const companyId = await this.findCompanyId(organizationId, payment.customer);
+      const contractId = payment.subscription
+        ? await this.findContractId(organizationId, payment.subscription)
+        : undefined;
 
-    // Recebimentos em dinheiro vão para conta Caixa, demais vão para conta Asaas
-    // Dinheiro = billingType UNDEFINED ou status RECEIVED_IN_CASH
-    const isCashPayment = payment.billingType === 'UNDEFINED' || payment.status === 'RECEIVED_IN_CASH';
-    const bankAccountId = isCashPayment
-      ? await this.findOrCreateCashBankAccount(organizationId)
-      : await this.findOrCreateAsaasBankAccount(organizationId);
+      const isCashPayment = payment.billingType === 'UNDEFINED' || payment.status === 'RECEIVED_IN_CASH';
+      const bankAccountId = isCashPayment
+        ? await this.findOrCreateCashBankAccount(organizationId)
+        : await this.findOrCreateAsaasBankAccount(organizationId);
 
-    const existing = await this.prisma.invoice.findFirst({
-      where: { organizationId, asaasPaymentId: payment.id },
+      const existing = await this.prisma.invoice.findFirst({
+        where: { organizationId, asaasPaymentId: payment.id },
+      });
+
+      const status = mapPaymentStatus(payment.status);
+      const isPaid = status === 'PAID';
+
+      const paidValue = isPaid
+        ? (payment.netValue != null ? payment.netValue : payment.value)
+        : undefined;
+
+      const data = {
+        status,
+        type: contractId ? ('RECURRING' as const) : ('ONE_TIME' as const),
+        value: payment.value,
+        totalValue: payment.value,
+        dueDate: new Date(payment.dueDate),
+        description: payment.description || undefined,
+        paidAt: isPaid && payment.paymentDate ? new Date(payment.paymentDate) : (isPaid ? new Date(payment.dueDate) : undefined),
+        paidValue,
+        paymentMethod: payment.billingType || undefined,
+        asaasPaymentId: payment.id,
+        asaasBillingType: payment.billingType || undefined,
+        asaasInvoiceUrl: payment.invoiceUrl || undefined,
+        asaasBankSlipUrl: payment.bankSlipUrl || undefined,
+        asaasPixCode: payment.pixTransaction?.qrCode || undefined,
+        companyId,
+        contractId,
+        bankAccountId,
+      };
+
+      if (existing) {
+        await this.prisma.invoice.update({
+          where: { id: existing.id },
+          data,
+        });
+      } else {
+        await this.prisma.invoice.create({
+          data: { ...data, organizationId },
+        });
+      }
     });
-
-    const status = mapPaymentStatus(payment.status);
-    const isPaid = status === 'PAID';
-
-    // paidValue: usar netValue (valor líquido) se disponível, senão usar value (valor bruto)
-    // Sem isso, paidValue fica null e as receitas não aparecem nos relatórios
-    const paidValue = isPaid
-      ? (payment.netValue != null ? payment.netValue : payment.value)
-      : undefined;
-
-    const data = {
-      status,
-      type: contractId ? ('RECURRING' as const) : ('ONE_TIME' as const),
-      value: payment.value,
-      totalValue: payment.value,
-      dueDate: new Date(payment.dueDate),
-      description: payment.description || undefined,
-      paidAt: isPaid && payment.paymentDate ? new Date(payment.paymentDate) : (isPaid ? new Date(payment.dueDate) : undefined),
-      paidValue,
-      paymentMethod: payment.billingType || undefined,
-      asaasPaymentId: payment.id,
-      asaasBillingType: payment.billingType || undefined,
-      asaasInvoiceUrl: payment.invoiceUrl || undefined,
-      asaasBankSlipUrl: payment.bankSlipUrl || undefined,
-      asaasPixCode: payment.pixTransaction?.qrCode || undefined,
-      companyId,
-      contractId,
-      bankAccountId,
-    };
-
-    if (existing) {
-      await this.prisma.invoice.update({
-        where: { id: existing.id },
-        data,
-      });
-    } else {
-      await this.prisma.invoice.create({
-        data: { ...data, organizationId },
-      });
-    }
   }
 }

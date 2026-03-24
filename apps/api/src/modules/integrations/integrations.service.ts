@@ -58,14 +58,32 @@ export class IntegrationsService {
       throw new NotFoundException('Integração Asaas não configurada');
     }
 
-    const success = await this.asaasService.testConnection(
+    // Test API connection
+    const apiOk = await this.asaasService.testConnection(
       integration.apiKey,
       integration.sandbox,
     );
 
+    if (!apiOk) {
+      return {
+        success: false,
+        message: 'Falha ao conectar com a API do Asaas. Verifique sua API Key.',
+      };
+    }
+
+    // Also verify DB connectivity (the sync will need it)
+    try {
+      await this.prisma.executeWithRetry(() => this.prisma.$queryRaw`SELECT 1`);
+    } catch {
+      return {
+        success: false,
+        message: 'API Asaas OK, mas o banco de dados está inacessível. A sincronização falhará. Verifique DATABASE_URL.',
+      };
+    }
+
     return {
-      success,
-      message: success ? 'Conexão estabelecida com sucesso' : 'Falha ao conectar com a API do Asaas. Verifique sua API Key.',
+      success: true,
+      message: 'Conexão com API Asaas e banco de dados verificada com sucesso',
     };
   }
 
