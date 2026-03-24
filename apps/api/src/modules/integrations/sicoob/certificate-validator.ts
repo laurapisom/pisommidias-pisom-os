@@ -1,9 +1,5 @@
 import * as tls from 'tls';
-import * as crypto from 'crypto';
-import { execFileSync } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as forge from 'node-forge';
 
 export interface CertificateValidationResult {
   valid: boolean;
@@ -25,7 +21,7 @@ export interface PfxTlsOptions {
 /**
  * Validates and loads a PFX certificate buffer.
  * If the PFX uses legacy OpenSSL algorithms (common with Brazilian ICP-Brasil certs),
- * automatically converts it using the system openssl CLI with -legacy flag.
+ * automatically converts it using node-forge (pure JavaScript PKCS12 parser).
  *
  * Returns TLS options ready to use with https.Agent or tls.createSecureContext.
  */
@@ -35,14 +31,14 @@ export function loadPfxCertificate(
 ): { valid: true; tlsOptions: PfxTlsOptions } | { valid: false; error: string; errorCode: string } {
   const pass = passphrase || '';
 
-  // 1. Try loading the PFX directly (works with modern format)
+  // 1. Try loading the PFX directly with Node.js TLS (works with modern format)
   try {
     tls.createSecureContext({ pfx: pfxBuffer, passphrase: pass });
     return { valid: true, tlsOptions: { pfx: pfxBuffer, passphrase: pass } };
   } catch (directErr: any) {
     const msg = (directErr.message || '').toLowerCase();
 
-    // Only attempt legacy conversion for mac verify failure / unsupported algorithm
+    // Only attempt node-forge conversion for mac verify failure / unsupported algorithm
     const isLegacyIssue = msg.includes('mac verify failure') ||
       msg.includes('mac_verify_failure') ||
       msg.includes('unsupported') ||
@@ -55,27 +51,26 @@ export function loadPfxCertificate(
     }
   }
 
-  // 2. Try converting legacy PFX to PEM using openssl CLI
-  const tmpDir = os.tmpdir();
-  const tmpPfx = path.join(tmpDir, `sicoob-cert-${Date.now()}.pfx`);
-  const tmpPem = path.join(tmpDir, `sicoob-cert-${Date.now()}.pem`);
-
+  // 2. Convert legacy PFX using node-forge (pure JavaScript, no openssl CLI dependency)
   try {
-    fs.writeFileSync(tmpPfx, pfxBuffer, { mode: 0o600 });
+    const derBuffer = forge.util.createBuffer(pfxBuffer.toString('binary'));
+    const asn1 = forge.asn1.fromDer(derBuffer);
+    const p12 = forge.pkcs12.pkcs12FromAsn1(asn1, false, pass);
 
-    // Convert PFX → PEM with -legacy flag (supports old encryption algorithms)
-    execFileSync('openssl', [
-      'pkcs12', '-in', tmpPfx, '-out', tmpPem, '-nodes', '-legacy',
-      '-passin', `pass:${pass}`,
-    ], { timeout: 10000, stdio: 'pipe' });
+    // Extract certificate chain
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+    const certBagList = certBags[forge.pki.oids.certBag] || [];
 
-    const pemContent = fs.readFileSync(tmpPem, 'utf-8');
+    // Extract private key
+    const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+    let keyBagList = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag] || [];
 
-    // Extract cert chain and private key from PEM
-    const certs = pemContent.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
-    const keyMatch = pemContent.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA )?PRIVATE KEY-----/);
+    if (keyBagList.length === 0) {
+      const keyBags2 = p12.getBags({ bagType: forge.pki.oids.keyBag });
+      keyBagList = keyBags2[forge.pki.oids.keyBag] || [];
+    }
 
-    if (!certs || !keyMatch) {
+    if (certBagList.length === 0 || keyBagList.length === 0) {
       return {
         valid: false,
         error: 'Não foi possível extrair certificado e chave privada do PFX. O arquivo pode estar corrompido.',
@@ -83,26 +78,45 @@ export function loadPfxCertificate(
       };
     }
 
-    const certChain = certs.join('\n');
-    const privateKey = keyMatch[0];
+    // Convert to PEM format
+    const certPems = certBagList
+      .filter((bag: any) => bag.cert)
+      .map((bag: any) => forge.pki.certificateToPem(bag.cert));
 
-    // Validate the extracted PEM works
-    try {
-      tls.createSecureContext({ cert: certChain, key: privateKey });
-    } catch (pemErr: any) {
+    const privateKey = keyBagList[0]?.key;
+    if (!privateKey) {
       return {
         valid: false,
-        error: `Certificado convertido mas inválido: ${pemErr.message}`,
+        error: 'Não foi possível extrair a chave privada do certificado PFX.',
         errorCode: 'CORRUPTED',
       };
     }
 
-    return { valid: true, tlsOptions: { cert: certChain, key: privateKey } };
-  } catch (opensslErr: any) {
-    const errMsg = (opensslErr.stderr?.toString() || opensslErr.message || '').toLowerCase();
+    const keyPem = forge.pki.privateKeyToPem(privateKey);
+    const certChain = certPems.join('\n');
 
-    // openssl also reports mac verify failure when password is truly wrong
-    if (errMsg.includes('mac verify failure') || errMsg.includes('mac_verify_failure') || errMsg.includes('bad decrypt')) {
+    // Validate the extracted PEM works with Node.js TLS
+    try {
+      tls.createSecureContext({ cert: certChain, key: keyPem });
+    } catch (pemErr: any) {
+      return {
+        valid: false,
+        error: `Certificado convertido mas inválido para TLS: ${pemErr.message}`,
+        errorCode: 'CORRUPTED',
+      };
+    }
+
+    return { valid: true, tlsOptions: { cert: certChain, key: keyPem } };
+  } catch (forgeErr: any) {
+    const errMsg = (forgeErr.message || '').toLowerCase();
+
+    // node-forge reports bad password as "Invalid password" or PKCS#12 MAC error
+    if (
+      errMsg.includes('invalid password') ||
+      errMsg.includes('pkcs#12 mac') ||
+      errMsg.includes('bad decrypt') ||
+      errMsg.includes('mac could not be verified')
+    ) {
       return {
         valid: false,
         error: 'Senha do certificado incorreta. Verifique se a senha está correta (sem espaços extras).',
@@ -110,25 +124,20 @@ export function loadPfxCertificate(
       };
     }
 
-    // openssl not found
-    if (opensslErr.code === 'ENOENT') {
+    // ASN.1 parsing errors = corrupted file
+    if (errMsg.includes('asn1') || errMsg.includes('too few bytes') || errMsg.includes('invalid')) {
       return {
         valid: false,
-        error: 'O certificado usa formato legado e o sistema não possui openssl instalado para convertê-lo. '
-          + 'Converta manualmente: openssl pkcs12 -in cert.pfx -out temp.pem -nodes -legacy && '
-          + 'openssl pkcs12 -export -in temp.pem -out cert_novo.pfx',
-        errorCode: 'OPENSSL_LEGACY',
+        error: 'O arquivo do certificado está corrompido ou não é um PFX válido. Faça download novamente.',
+        errorCode: 'CORRUPTED',
       };
     }
 
     return {
       valid: false,
-      error: `Erro ao processar o certificado: ${opensslErr.message}`,
+      error: `Erro ao processar o certificado: ${forgeErr.message}`,
       errorCode: 'UNKNOWN',
     };
-  } finally {
-    try { fs.unlinkSync(tmpPfx); } catch {}
-    try { fs.unlinkSync(tmpPem); } catch {}
   }
 }
 
@@ -149,70 +158,42 @@ export function validatePfxCertificate(
  */
 export function classifyCertificateError(err: any): CertificateValidationResult {
   const message = (err.message || '').toLowerCase();
-  const code = (err.code || '').toLowerCase();
 
-  // MAC verify failure — most common: wrong password or OpenSSL incompatibility
   if (message.includes('mac verify failure') || message.includes('mac_verify_failure')) {
     return {
       valid: false,
-      error: 'Senha do certificado incorreta ou certificado incompatível. '
-        + 'Verifique se a senha está correta (sem espaços extras). '
-        + 'Se o certificado foi gerado com uma versão diferente do OpenSSL, '
-        + 'pode ser necessário reconvertê-lo com: '
-        + 'openssl pkcs12 -in cert.pfx -out temp.pem -nodes -legacy && '
-        + 'openssl pkcs12 -export -in temp.pem -out cert_novo.pfx',
+      error: 'Senha do certificado incorreta ou certificado com formato incompatível.',
       errorCode: 'WRONG_PASSWORD',
     };
   }
 
-  // Unsupported algorithm (OpenSSL 3.x legacy issue)
-  if (
-    message.includes('unsupported') ||
-    message.includes('legacy') ||
-    message.includes('rc2-40-cbc') ||
-    message.includes('algorithm')
-  ) {
+  if (message.includes('unsupported') || message.includes('legacy') || message.includes('rc2-40-cbc') || message.includes('algorithm')) {
     return {
       valid: false,
-      error: 'O certificado usa um algoritmo de criptografia incompatível com esta versão do sistema. '
-        + 'Reconverta o certificado usando: '
-        + 'openssl pkcs12 -in cert.pfx -out temp.pem -nodes -legacy && '
-        + 'openssl pkcs12 -export -in temp.pem -out cert_novo.pfx',
+      error: 'O certificado usa um algoritmo de criptografia incompatível.',
       errorCode: 'OPENSSL_LEGACY',
     };
   }
 
-  // Bad PKCS12 format
-  if (
-    message.includes('not enough data') ||
-    message.includes('bad pkcs12') ||
-    message.includes('asn1') ||
-    message.includes('header too long') ||
-    message.includes('wrong tag')
-  ) {
+  if (message.includes('not enough data') || message.includes('bad pkcs12') || message.includes('asn1') || message.includes('header too long') || message.includes('wrong tag')) {
     return {
       valid: false,
-      error: 'O arquivo do certificado está corrompido ou não é um arquivo PFX/PKCS12 válido. '
-        + 'Faça o download do certificado novamente junto à autoridade certificadora.',
+      error: 'O arquivo do certificado está corrompido ou não é um PFX válido. Faça download novamente.',
       errorCode: 'CORRUPTED',
     };
   }
 
-  // Empty/no password when one is required
   if (message.includes('bad decrypt') || message.includes('bad_decrypt')) {
     return {
       valid: false,
-      error: 'A senha do certificado está incorreta. Verifique se digitou a senha corretamente, '
-        + 'sem espaços extras no início ou final.',
+      error: 'Senha do certificado incorreta. Verifique se digitou corretamente.',
       errorCode: 'WRONG_PASSWORD',
     };
   }
 
-  // Generic fallback
   return {
     valid: false,
-    error: `Erro ao carregar o certificado: ${err.message}. `
-      + 'Verifique se o arquivo é um certificado PFX válido e se a senha está correta.',
+    error: `Erro ao carregar o certificado: ${err.message}`,
     errorCode: 'UNKNOWN',
   };
 }
@@ -225,28 +206,23 @@ export function translateConnectionError(errorMessage: string): string {
   const msg = errorMessage.toLowerCase();
 
   if (msg.includes('mac verify failure') || msg.includes('mac_verify_failure')) {
-    return 'Falha na autenticação do certificado (mac verify failure). '
-      + 'Causas prováveis: (1) Senha do certificado incorreta — redigite a senha nas credenciais. '
-      + '(2) Certificado gerado com versão incompatível do OpenSSL — reconverta o PFX. '
-      + '(3) Arquivo do certificado corrompido — faça upload novamente.';
+    return 'Falha na autenticação do certificado. Verifique a senha e tente fazer upload novamente.';
   }
 
   if (msg.includes('bad decrypt') || msg.includes('bad_decrypt')) {
-    return 'Senha do certificado incorreta. Edite as credenciais e redigite a senha exata do certificado.';
+    return 'Senha do certificado incorreta.';
   }
 
   if (msg.includes('certificate has expired') || msg.includes('cert_has_expired')) {
-    return 'O certificado digital expirou. Emita um novo certificado A1 junto à autoridade certificadora e faça upload novamente.';
+    return 'O certificado digital expirou. Emita um novo certificado A1 e faça upload novamente.';
   }
 
   if (msg.includes('self signed certificate') || msg.includes('self_signed_cert_in_chain')) {
-    return 'O certificado não é reconhecido pela cadeia de confiança ICP-Brasil. '
-      + 'Verifique se está usando um certificado A1 válido emitido por uma AC da ICP-Brasil.';
+    return 'Certificado não reconhecido pela cadeia de confiança ICP-Brasil.';
   }
 
   if (msg.includes('unable to verify the first certificate')) {
-    return 'Não foi possível verificar a cadeia de certificados. '
-      + 'O certificado precisa ser A1, emitido por uma AC da ICP-Brasil.';
+    return 'Não foi possível verificar a cadeia de certificados. Use um certificado A1 ICP-Brasil.';
   }
 
   if (msg.includes('econnrefused') || msg.includes('enotfound')) {
@@ -254,16 +230,15 @@ export function translateConnectionError(errorMessage: string): string {
   }
 
   if (msg.includes('timeout')) {
-    return 'Tempo limite excedido ao conectar com o Sicoob. Tente novamente em alguns instantes.';
+    return 'Tempo limite excedido ao conectar com o Sicoob. Tente novamente.';
   }
 
   if (msg.includes('401') || msg.includes('unauthorized')) {
-    return 'Client ID não autorizado. Verifique se o Client ID está correto e se a aplicação foi aprovada no portal do Sicoob.';
+    return 'Client ID não autorizado. Verifique se o Client ID está correto e a aplicação foi aprovada no portal Sicoob Developers.';
   }
 
   if (msg.includes('403') || msg.includes('forbidden')) {
-    return 'Acesso negado. Verifique se a aplicação no portal do Sicoob tem os escopos necessários '
-      + '(cco_consulta, cco_saldo, cco_extrato) e se foi liberada no Internet Banking.';
+    return 'Acesso negado. Verifique os escopos (openid, cco_saldo, cco_extrato) no portal Sicoob Developers.';
   }
 
   return errorMessage;

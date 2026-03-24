@@ -115,7 +115,7 @@ export class SicoobService {
     const body = new URLSearchParams({
       grant_type: 'client_credentials',
       client_id: config.clientId,
-      scope: 'cco_consulta cco_saldo cco_extrato',
+      scope: 'openid cco_saldo cco_extrato',
     });
 
     this.logger.log(`Requesting token from ${tokenUrl}`);
@@ -129,7 +129,16 @@ export class SicoobService {
 
     if (res.status >= 400) {
       this.logger.error(`Token request failed (${res.status}): ${res.body.substring(0, 300)}`);
-      throw new Error(`Sicoob auth failed (${res.status}): ${res.body.substring(0, 200)}`);
+      // Parse error details from Sicoob's OAuth response
+      let detail = '';
+      try {
+        const errBody = JSON.parse(res.body);
+        detail = errBody.error_description || errBody.error || '';
+      } catch {}
+      throw new Error(
+        `Autenticação Sicoob falhou (HTTP ${res.status})${detail ? ': ' + detail : ''}. `
+        + 'Verifique o Client ID e se a aplicação está ativa no portal Sicoob Developers.',
+      );
     }
 
     const data = JSON.parse(res.body) as { access_token: string; expires_in: number };
@@ -155,7 +164,7 @@ export class SicoobService {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'x-sicoob-clientid': config.clientId,
+        Accept: 'application/json',
         client_id: config.clientId,
       },
       tlsOptions: config.tlsOptions,
