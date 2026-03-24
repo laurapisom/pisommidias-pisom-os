@@ -104,6 +104,17 @@ export class SicoobService {
 
   // ── Token Management ────────────────────────────────────
 
+  // Scope combinations to try (in order of preference)
+  // The valid scopes depend on which APIs were enabled in the Sicoob Developers portal
+  private static readonly SCOPE_ATTEMPTS = [
+    'openid cco_saldo cco_extrato',
+    'cco_saldo cco_extrato',
+    'openid',
+  ];
+
+  // Cache which scope worked for a given clientId
+  private scopeCache = new Map<string, string>();
+
   private async getAccessToken(config: SicoobConfig, sandbox = false): Promise<string> {
     const cacheKey = config.clientId;
     const cached = this.tokenCache.get(cacheKey);
@@ -112,44 +123,62 @@ export class SicoobService {
     }
 
     const tokenUrl = sandbox ? this.SANDBOX_TOKEN_URL : this.TOKEN_URL;
-    const body = new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: config.clientId,
-      scope: 'openid cco_saldo cco_extrato',
-    });
 
-    this.logger.log(`Requesting token from ${tokenUrl}`);
+    // Use cached scope if we already found one that works, otherwise try all
+    const cachedScope = this.scopeCache.get(cacheKey);
+    const scopesToTry = cachedScope
+      ? [cachedScope]
+      : SicoobService.SCOPE_ATTEMPTS;
 
-    const res = await this.httpsRequest(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-      tlsOptions: config.tlsOptions,
-    });
+    let lastError = '';
+    for (const scope of scopesToTry) {
+      const body = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: config.clientId,
+        scope,
+      });
 
-    if (res.status >= 400) {
-      this.logger.error(`Token request failed (${res.status}): ${res.body.substring(0, 300)}`);
-      // Parse error details from Sicoob's OAuth response
+      this.logger.log(`Requesting token from ${tokenUrl} with scope: ${scope}`);
+
+      const res = await this.httpsRequest(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+        tlsOptions: config.tlsOptions,
+      });
+
+      if (res.status < 400) {
+        const data = JSON.parse(res.body) as { access_token: string; expires_in: number };
+        const token = data.access_token;
+        this.tokenCache.set(cacheKey, {
+          token,
+          expiresAt: Date.now() + (data.expires_in - 20) * 1000,
+        });
+        // Remember which scope worked
+        this.scopeCache.set(cacheKey, scope);
+        this.logger.log(`Token obtained successfully with scope: ${scope}`);
+        return token;
+      }
+
+      // Parse error
       let detail = '';
       try {
         const errBody = JSON.parse(res.body);
         detail = errBody.error_description || errBody.error || '';
       } catch {}
-      throw new Error(
-        `Autenticação Sicoob falhou (HTTP ${res.status})${detail ? ': ' + detail : ''}. `
-        + 'Verifique o Client ID e se a aplicação está ativa no portal Sicoob Developers.',
-      );
+
+      this.logger.warn(`Token request failed with scope "${scope}" (${res.status}): ${detail}`);
+      lastError = detail;
+
+      // Only retry on invalid_scope errors
+      if (!detail.toLowerCase().includes('scope')) break;
     }
 
-    const data = JSON.parse(res.body) as { access_token: string; expires_in: number };
-    const token = data.access_token;
-    this.tokenCache.set(cacheKey, {
-      token,
-      expiresAt: Date.now() + (data.expires_in - 20) * 1000,
-    });
-
-    this.logger.log('Token obtained successfully');
-    return token;
+    throw new Error(
+      `Autenticação Sicoob falhou: ${lastError || 'erro desconhecido'}. `
+      + 'Verifique no portal developers.sicoob.com.br se a API "Conta Corrente" está habilitada no seu aplicativo '
+      + 'e se o aplicativo está com status ATIVO.',
+    );
   }
 
   private async httpGet<T>(path: string, config: SicoobConfig, sandbox = false): Promise<T> {
