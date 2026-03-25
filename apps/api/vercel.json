@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npx prisma db push --accept-data-loss && npx prisma generate && npm run build",
+  "buildCommand": "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL} && npx prisma db push --accept-data-loss && npx prisma generate && npm run build",
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {
