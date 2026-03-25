@@ -156,6 +156,19 @@ export class IntegrationsService {
     };
   }
 
+  async handleAsaasWebhook(organizationId: string, event: string, paymentData: any) {
+    // Verify org has active Asaas integration
+    const integration = await this.prisma.integration.findUnique({
+      where: { organizationId_provider: { organizationId, provider: 'asaas' } },
+    });
+
+    if (!integration || !integration.isActive) {
+      throw new NotFoundException('Integração Asaas não encontrada ou inativa para esta organização');
+    }
+
+    await this.asaasSyncService.processPaymentWebhook(organizationId, event, paymentData);
+  }
+
   async deleteAsaasIntegration(organizationId: string) {
     await this.prisma.integration.deleteMany({
       where: { organizationId, provider: 'asaas' },

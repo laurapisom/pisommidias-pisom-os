@@ -34,18 +34,30 @@ export interface AsaasSubscription {
 
 export interface AsaasPayment {
   id: string;
+  dateCreated: string;
   customer: string;
   subscription?: string;
+  installment?: string;
   billingType: string;
   value: number;
   netValue?: number;
+  originalValue?: number;
+  interestValue?: number;
+  description?: string;
+  externalReference?: string;
   dueDate: string;
   paymentDate?: string;
+  clientPaymentDate?: string;
+  confirmedDate?: string;
+  creditDate?: string;
+  estimatedCreditDate?: string;
   status: string;
-  description?: string;
+  deleted?: boolean;
   invoiceUrl?: string;
   bankSlipUrl?: string;
+  transactionReceiptUrl?: string;
   pixTransaction?: { qrCode?: string };
+  nossoNumero?: string;
 }
 
 export interface AsaasFinancialTransaction {
