@@ -5,11 +5,7 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
 export class CardsService {
   constructor(private prisma: PrismaService) {}
 
-  private cardSelect = {
-    id: true, title: true, description: true, priority: true,
-    isCompleted: true, completedAt: true, dueDate: true,
-    position: true, coverColor: true, isArchived: true, createdAt: true,
-    listId: true, boardId: true, organizationId: true,
+  private cardInclude = {
     company: { select: { id: true, name: true, color: true } },
     assignees: {
       include: { user: { select: { id: true, firstName: true, lastName: true, avatar: true } } },
@@ -30,7 +26,7 @@ export class CardsService {
 
     return this.prisma.boardCard.findMany({
       where,
-      select: this.cardSelect,
+      include: this.cardInclude,
       orderBy: [{ listId: 'asc' }, { position: 'asc' }],
     });
   }
