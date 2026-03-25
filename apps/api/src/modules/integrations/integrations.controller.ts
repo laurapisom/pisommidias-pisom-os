@@ -16,6 +16,8 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from './integrations.service';
+import { GoogleDriveService } from './google-drive/google-drive.service';
+import { N8nService } from './n8n/n8n.service';
 import { loadPfxCertificate } from './sicoob/certificate-validator';
 import * as path from 'path';
 
@@ -24,7 +26,11 @@ import * as path from 'path';
 @UseGuards(JwtAuthGuard)
 @Controller('integrations')
 export class IntegrationsController {
-  constructor(private integrationsService: IntegrationsService) {}
+  constructor(
+    private integrationsService: IntegrationsService,
+    private googleDriveService: GoogleDriveService,
+    private n8nService: N8nService,
+  ) {}
 
   // ═══════════════════════════════════════════════════════════
   // ASAAS
@@ -231,5 +237,61 @@ export class IntegrationsController {
       page: query.page ? Number(query.page) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GOOGLE DRIVE
+  // ═══════════════════════════════════════════════════════════
+
+  @Get('google-drive')
+  @ApiOperation({ summary: 'Get Google Drive integration settings' })
+  getGoogleDrive(@CurrentUser() user: any) {
+    return this.googleDriveService.getIntegration(user.organizationId);
+  }
+
+  @Post('google-drive')
+  @ApiOperation({ summary: 'Save Google Drive integration settings' })
+  saveGoogleDrive(@CurrentUser() user: any, @Body() body: { settings: Record<string, any> }) {
+    return this.googleDriveService.save(user.organizationId, body);
+  }
+
+  @Delete('google-drive')
+  @ApiOperation({ summary: 'Disconnect Google Drive' })
+  disconnectGoogleDrive(@CurrentUser() user: any) {
+    return this.googleDriveService.disconnect(user.organizationId);
+  }
+
+  @Post('google-drive/test')
+  @ApiOperation({ summary: 'Test Google Drive connection' })
+  testGoogleDrive(@CurrentUser() user: any) {
+    return this.googleDriveService.test(user.organizationId);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // N8N
+  // ═══════════════════════════════════════════════════════════
+
+  @Get('n8n')
+  @ApiOperation({ summary: 'Get n8n integration settings' })
+  getN8n(@CurrentUser() user: any) {
+    return this.n8nService.getIntegration(user.organizationId);
+  }
+
+  @Post('n8n')
+  @ApiOperation({ summary: 'Save n8n integration settings' })
+  saveN8n(@CurrentUser() user: any, @Body() body: { webhookUrl: string; apiKey?: string }) {
+    return this.n8nService.save(user.organizationId, body);
+  }
+
+  @Delete('n8n')
+  @ApiOperation({ summary: 'Disconnect n8n' })
+  disconnectN8n(@CurrentUser() user: any) {
+    return this.n8nService.disconnect(user.organizationId);
+  }
+
+  @Post('n8n/test')
+  @ApiOperation({ summary: 'Test n8n webhook' })
+  testN8n(@CurrentUser() user: any) {
+    return this.n8nService.test(user.organizationId);
   }
 }

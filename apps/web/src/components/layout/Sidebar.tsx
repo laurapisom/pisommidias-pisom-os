@@ -25,6 +25,10 @@ import {
   ListOrdered,
   FileBarChart,
   UsersRound,
+  LayoutGrid,
+  BarChart3,
+  Lightbulb,
+  ShieldCheck,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -61,6 +65,19 @@ const navItems = [
     ],
   },
   { label: 'Colaboradores', href: '/collaborators', icon: UsersRound, moduleKey: 'collaborators' },
+  {
+    label: 'Gestão Operacional',
+    icon: LayoutGrid,
+    moduleKey: 'gestao_operacional',
+    children: [
+      { label: 'Quadros', href: '/gestao-operacional', icon: Kanban },
+      { label: 'Dashboard', href: '/gestao-operacional/dashboard', icon: BarChart3 },
+      { label: 'Relatórios', href: '/gestao-operacional/reports', icon: FileBarChart },
+      { label: 'Produtividade', href: '/gestao-operacional/productivity', icon: TrendingUp },
+      { label: 'Sugestões', href: '/gestao-operacional/suggestions', icon: Lightbulb },
+      { label: 'Auditoria', href: '/gestao-operacional/audit', icon: ShieldCheck },
+    ],
+  },
 ];
 
 export function Sidebar() {

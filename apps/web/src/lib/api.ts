@@ -653,6 +653,92 @@ class ApiClient {
     const qs = params.toString();
     return this.get<any>(`/integrations/transfers${qs ? `?${qs}` : ''}`);
   }
+
+  // ── Gestão Operacional ──────────────────────────────────
+
+  // Boards
+  getBoards() { return this.get<any[]>('/gestao-operacional/boards'); }
+  createBoard(data: any) { return this.post<any>('/gestao-operacional/boards', data); }
+  getBoard(boardId: string) { return this.get<any>(`/gestao-operacional/boards/${boardId}`); }
+  updateBoard(boardId: string, data: any) { return this.patch<any>(`/gestao-operacional/boards/${boardId}`, data); }
+  archiveBoard(boardId: string) { return this.delete<any>(`/gestao-operacional/boards/${boardId}`); }
+  getBoardMembers(boardId: string) { return this.get<any[]>(`/gestao-operacional/boards/${boardId}/members`); }
+  addBoardMember(boardId: string, data: any) { return this.post<any>(`/gestao-operacional/boards/${boardId}/members`, data); }
+  removeBoardMember(boardId: string, userId: string) { return this.delete<any>(`/gestao-operacional/boards/${boardId}/members/${userId}`); }
+
+  // Lists
+  getBoardLists(boardId: string) { return this.get<any[]>(`/gestao-operacional/boards/${boardId}/lists`); }
+  createList(boardId: string, data: any) { return this.post<any>(`/gestao-operacional/boards/${boardId}/lists`, data); }
+  updateList(boardId: string, listId: string, data: any) { return this.patch<any>(`/gestao-operacional/boards/${boardId}/lists/${listId}`, data); }
+  deleteList(boardId: string, listId: string) { return this.delete<any>(`/gestao-operacional/boards/${boardId}/lists/${listId}`); }
+  reorderLists(boardId: string, lists: any[]) { return this.patch<any>(`/gestao-operacional/boards/${boardId}/lists/reorder`, { lists }); }
+
+  // Cards
+  getBoardCards(boardId: string, filters?: Record<string, string>) {
+    const params = new URLSearchParams(filters || {});
+    const qs = params.toString();
+    return this.get<any[]>(`/gestao-operacional/boards/${boardId}/cards${qs ? `?${qs}` : ''}`);
+  }
+  createCard(boardId: string, data: any) { return this.post<any>(`/gestao-operacional/boards/${boardId}/cards`, data); }
+  getCard(cardId: string) { return this.get<any>(`/gestao-operacional/cards/${cardId}`); }
+  updateCard(cardId: string, data: any) { return this.patch<any>(`/gestao-operacional/cards/${cardId}`, data); }
+  deleteCard(cardId: string) { return this.delete<any>(`/gestao-operacional/cards/${cardId}`); }
+  moveCard(cardId: string, data: { listId: string; position: number }) { return this.patch<any>(`/gestao-operacional/cards/${cardId}/move`, data); }
+  toggleCardComplete(cardId: string) { return this.patch<any>(`/gestao-operacional/cards/${cardId}/complete`); }
+  setCardAssignees(cardId: string, assigneeIds: string[]) { return this.patch<any>(`/gestao-operacional/cards/${cardId}/assignees`, { assigneeIds }); }
+  getCardHistory(cardId: string) { return this.get<any[]>(`/gestao-operacional/cards/${cardId}/history`); }
+
+  // Comments
+  getCardComments(cardId: string) { return this.get<any[]>(`/gestao-operacional/cards/${cardId}/comments`); }
+  createComment(cardId: string, data: any) { return this.post<any>(`/gestao-operacional/cards/${cardId}/comments`, data); }
+  updateComment(commentId: string, content: string) { return this.patch<any>(`/gestao-operacional/comments/${commentId}`, { content }); }
+  deleteComment(commentId: string) { return this.delete<any>(`/gestao-operacional/comments/${commentId}`); }
+
+  // Checklists
+  createChecklist(cardId: string, title: string) { return this.post<any>(`/gestao-operacional/cards/${cardId}/checklists`, { title }); }
+  addChecklistItem(checklistId: string, data: any) { return this.post<any>(`/gestao-operacional/checklists/${checklistId}/items`, data); }
+  updateChecklistItem(itemId: string, data: any) { return this.patch<any>(`/gestao-operacional/checklist-items/${itemId}`, data); }
+  deleteChecklistItem(itemId: string) { return this.delete<any>(`/gestao-operacional/checklist-items/${itemId}`); }
+  toggleChecklistItem(itemId: string) { return this.patch<any>(`/gestao-operacional/checklist-items/${itemId}/complete`); }
+
+  // Attachments
+  createAttachment(cardId: string, data: any) { return this.post<any>(`/gestao-operacional/cards/${cardId}/attachments`, data); }
+  deleteAttachment(attachmentId: string) { return this.delete<any>(`/gestao-operacional/attachments/${attachmentId}`); }
+
+  // Notifications
+  getBoardNotifications() { return this.get<any[]>('/gestao-operacional/notifications'); }
+  markNotificationRead(id: string) { return this.patch<any>(`/gestao-operacional/notifications/${id}/read`); }
+  markAllNotificationsRead() { return this.patch<any>('/gestao-operacional/notifications/read-all'); }
+
+  // Suggestions
+  getSuggestions() { return this.get<any[]>('/gestao-operacional/suggestions'); }
+  createSuggestion(data: any) { return this.post<any>('/gestao-operacional/suggestions', data); }
+  changeSuggestionStatus(id: string, data: any) { return this.patch<any>(`/gestao-operacional/suggestions/${id}/status`, data); }
+  toggleSuggestionUpvote(id: string) { return this.patch<any>(`/gestao-operacional/suggestions/${id}/upvote`); }
+
+  // Productivity
+  getProductivityStats(params?: { period?: string; boardId?: string }) {
+    const qs = new URLSearchParams(params as any).toString();
+    return this.get<any>(`/gestao-operacional/productivity${qs ? `?${qs}` : ''}`);
+  }
+  getProductivityRanking(period?: string) {
+    return this.get<any[]>(`/gestao-operacional/productivity/ranking${period ? `?period=${period}` : ''}`);
+  }
+  getMyProductivity(period?: string) {
+    return this.get<any>(`/gestao-operacional/productivity/me${period ? `?period=${period}` : ''}`);
+  }
+
+  // Integration: Google Drive
+  getGoogleDriveIntegration() { return this.get<any>('/integrations/google-drive'); }
+  saveGoogleDriveIntegration(settings: any) { return this.post<any>('/integrations/google-drive', { settings }); }
+  disconnectGoogleDrive() { return this.delete<any>('/integrations/google-drive'); }
+  testGoogleDrive() { return this.post<any>('/integrations/google-drive/test'); }
+
+  // Integration: n8n
+  getN8nIntegration() { return this.get<any>('/integrations/n8n'); }
+  saveN8nIntegration(data: { webhookUrl: string; apiKey?: string }) { return this.post<any>('/integrations/n8n', data); }
+  disconnectN8n() { return this.delete<any>('/integrations/n8n'); }
+  testN8n() { return this.post<any>('/integrations/n8n/test'); }
 }
 
 export const api = new ApiClient();

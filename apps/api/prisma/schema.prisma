@@ -44,6 +44,13 @@ model Organization {
   ddaBills            DdaBill[]
   scheduledPayments   ScheduledPayment[]
   jobTitles           JobTitle[]
+  boards              OperationalBoard[]
+  boardMembers        BoardMember[]
+  boardCards          BoardCard[]
+  boardCardComments   BoardCardComment[]
+  boardCardHistory    BoardCardHistory[]
+  boardNotifications  BoardNotification[]
+  improvementSuggestions ImprovementSuggestion[]
 
   @@map("organizations")
 }
@@ -106,6 +113,16 @@ model User {
   onboardingItemsCompleted OnboardingItem[] @relation("OnboardingItemCompletedBy")
   expensesCreated  Expense[] @relation("ExpenseCreator")
   expensesApproved Expense[] @relation("ExpenseApprover")
+  createdBoards    OperationalBoard[]  @relation("BoardCreator")
+  boardMemberships BoardMember[]
+  boardCardsAssigned BoardCardAssignee[]
+  boardCardsCreated  BoardCard[]       @relation("BoardCardCreator")
+  boardCardsCompleted BoardCard[]      @relation("BoardCardCompleter")
+  boardComments    BoardCardComment[]
+  boardHistory     BoardCardHistory[]
+  boardNotifications BoardNotification[]
+  checklistItems   BoardChecklistItem[] @relation("ChecklistItemResponsavel")
+  improvementSuggestions ImprovementSuggestion[]
   @@map("users")
 }
 
@@ -243,6 +260,7 @@ model Company {
   industry       String?
   size           String?
   logo           String?
+  color          String?
   customFields    Json?
   asaasCustomerId String?
   isCustomer      Boolean  @default(false)
@@ -255,6 +273,7 @@ model Company {
   deals        Deal[]
   contracts    Contract[]
   invoices     Invoice[]   @relation("InvoiceCompany")
+  boardCards   BoardCard[]
 
   @@index([organizationId])
   @@index([organizationId, asaasCustomerId])
@@ -1083,5 +1102,279 @@ model ScheduledPayment {
   @@unique([organizationId, externalId])
   @@index([organizationId, scheduledDate])
   @@map("scheduled_payments")
+}
+
+// ============================================================
+// GESTÃO OPERACIONAL
+// ============================================================
+
+enum BoardCardPriority {
+  NORMAL
+  ALTA
+}
+
+enum SuggestionStatus {
+  OPEN
+  IN_ANALYSIS
+  ACCEPTED
+  REJECTED
+  IMPLEMENTED
+}
+
+model OperationalBoard {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  color          String?
+  icon           String?
+  position       Int      @default(0)
+  isArchived     Boolean  @default(false)
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("BoardCreator", fields: [createdById], references: [id])
+  lists        BoardList[]
+  members      BoardMember[]
+  cards        BoardCard[]
+
+  @@index([organizationId])
+  @@index([organizationId, isArchived])
+  @@map("operational_boards")
+}
+
+model BoardMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  boardId        String
+  userId         String
+  role           String   @default("member")
+  addedById      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  board        OperationalBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@index([organizationId, userId])
+  @@map("board_members")
+}
+
+model BoardList {
+  id         String   @id @default(cuid())
+  boardId    String
+  name       String
+  position   Int      @default(0)
+  color      String?
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  board OperationalBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards BoardCard[]
+
+  @@index([boardId, position])
+  @@map("board_lists")
+}
+
+model BoardCard {
+  id             String            @id @default(cuid())
+  organizationId String
+  boardId        String
+  listId         String
+  companyId      String?
+  createdById    String
+  title          String
+  description    String?
+  priority       BoardCardPriority @default(NORMAL)
+  isCompleted    Boolean           @default(false)
+  completedAt    DateTime?
+  completedById  String?
+  dueDate        DateTime?
+  position       Int               @default(0)
+  coverColor     String?
+  coverImageUrl  String?
+  isArchived     Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  board        OperationalBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  list         BoardList        @relation(fields: [listId], references: [id], onDelete: Restrict)
+  company      Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdBy    User             @relation("BoardCardCreator", fields: [createdById], references: [id])
+  completedBy  User?            @relation("BoardCardCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+  assignees    BoardCardAssignee[]
+  checklists   BoardChecklist[]
+  comments     BoardCardComment[]
+  attachments  BoardCardAttachment[]
+  history      BoardCardHistory[]
+
+  @@index([organizationId, boardId, listId])
+  @@index([organizationId, companyId])
+  @@index([organizationId, isCompleted])
+  @@index([dueDate])
+  @@map("board_cards")
+}
+
+model BoardCardAssignee {
+  id         String   @id @default(cuid())
+  cardId     String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  card BoardCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, userId])
+  @@map("board_card_assignees")
+}
+
+model BoardChecklist {
+  id        String   @id @default(cuid())
+  cardId    String
+  title     String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  card  BoardCard            @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  items BoardChecklistItem[]
+
+  @@index([cardId])
+  @@map("board_checklists")
+}
+
+model BoardChecklistItem {
+  id            String    @id @default(cuid())
+  checklistId   String
+  title         String
+  isCompleted   Boolean   @default(false)
+  completedAt   DateTime?
+  responsavelId String?
+  dueDate       DateTime?
+  position      Int       @default(0)
+  syncedTaskId  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  checklist   BoardChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  responsavel User?          @relation("ChecklistItemResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+
+  @@index([checklistId])
+  @@map("board_checklist_items")
+}
+
+model BoardCardComment {
+  id             String   @id @default(cuid())
+  organizationId String
+  cardId         String
+  userId         String
+  content        String   @db.Text
+  mentions       String[]
+  isEdited       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  card         BoardCard    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([cardId, createdAt])
+  @@map("board_card_comments")
+}
+
+model BoardCardAttachment {
+  id           String   @id @default(cuid())
+  cardId       String
+  uploadedById String
+  name         String
+  driveFileId  String?
+  driveUrl     String?
+  mimeType     String?
+  sizeBytes    Int?
+  createdAt    DateTime @default(now())
+
+  card BoardCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+  @@map("board_card_attachments")
+}
+
+model BoardCardHistory {
+  id             String   @id @default(cuid())
+  organizationId String
+  cardId         String
+  userId         String?
+  action         String
+  field          String?
+  oldValue       Json?
+  newValue       Json?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  card         BoardCard    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([cardId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("board_card_history")
+}
+
+model BoardCardReadReceipt {
+  id     String   @id @default(cuid())
+  cardId String
+  userId String
+  readAt DateTime @default(now())
+
+  @@unique([cardId, userId])
+  @@map("board_card_read_receipts")
+}
+
+model BoardNotification {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  actorId        String?
+  type           String
+  boardId        String?
+  cardId         String?
+  message        String
+  isRead         Boolean   @default(false)
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, isRead])
+  @@index([organizationId, userId, createdAt])
+  @@map("board_notifications")
+}
+
+model ImprovementSuggestion {
+  id                String           @id @default(cuid())
+  organizationId    String
+  createdById       String
+  title             String
+  description       String           @db.Text
+  status            SuggestionStatus @default(OPEN)
+  statusChangedById String?
+  statusChangedAt   DateTime?
+  statusNote        String?
+  upvotes           String[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@map("improvement_suggestions")
 }
 
