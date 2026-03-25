@@ -1,6 +1,7 @@
 import {
   WebSocketGateway, WebSocketServer, SubscribeMessage,
-  OnGatewayConnection, OnGatewayDisconnect, ConnectedSocket, MessageBody,
+  OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit,
+  ConnectedSocket, MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
@@ -10,7 +11,7 @@ import { BoardsGatewayService } from './boards.gateway.service';
   namespace: '/boards',
   cors: { origin: '*', credentials: true },
 })
-export class BoardsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class BoardsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   @WebSocketServer()
   server: Server;
 

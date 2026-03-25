@@ -4,14 +4,14 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
-  DndContext, DragEndEvent, DragOverEvent, DragStartEvent,
+  DndContext, DragEndEvent, DragStartEvent,
   PointerSensor, useSensor, useSensors, closestCorners,
 } from '@dnd-kit/core';
 import {
   SortableContext, useSortable, arrayMove, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Plus, MoreHorizontal, CheckCircle2, Circle, Calendar, User, X, ChevronLeft } from 'lucide-react';
+import { Plus, CheckCircle2, Circle, Calendar, X, ChevronLeft, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
 // ─── Sortable Card ───────────────────────────────────────
@@ -103,18 +103,22 @@ function CardDetailModal({ cardId, onClose, onRefresh }: { cardId: string; onClo
   }, [cardId]);
 
   const handleToggleComplete = async () => {
-    await api.toggleCardComplete(cardId);
-    const updated = await api.getCard(cardId);
-    setCard(updated);
-    onRefresh();
+    try {
+      await api.toggleCardComplete(cardId);
+      const updated = await api.getCard(cardId);
+      setCard(updated);
+      onRefresh();
+    } catch (err) { console.error('Erro ao completar cartão:', err); }
   };
 
   const handleComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-    await api.createComment(cardId, { content: newComment.trim() });
-    setNewComment('');
-    api.getCardComments(cardId).then(setComments);
+    try {
+      await api.createComment(cardId, { content: newComment.trim() });
+      setNewComment('');
+      api.getCardComments(cardId).then(setComments);
+    } catch (err) { console.error('Erro ao comentar:', err); }
   };
 
   if (!card) return (
@@ -305,6 +309,8 @@ export default function BoardPage() {
   const [addingToList, setAddingToList] = useState<string | null>(null);
   const [newCardTitle, setNewCardTitle] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -356,10 +362,19 @@ export default function BoardPage() {
   const handleAddCard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCardTitle.trim() || !addingToList) return;
-    await api.createCard(boardId, { title: newCardTitle.trim(), listId: addingToList });
-    setNewCardTitle('');
-    setAddingToList(null);
-    load();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api.createCard(boardId, { title: newCardTitle.trim(), listId: addingToList });
+      setNewCardTitle('');
+      setAddingToList(null);
+      await load();
+    } catch (err: any) {
+      console.error('Erro ao criar cartão:', err);
+      setError(err.message || 'Erro ao criar cartão');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) return (
@@ -380,6 +395,15 @@ export default function BoardPage() {
         <div className="h-4 w-px bg-gray-200" />
         <h1 className="text-lg font-semibold text-gray-900">{board.name}</h1>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="mx-4 mt-2 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+        </div>
+      )}
 
       {/* Kanban */}
       <div className="flex-1 overflow-x-auto p-4">
@@ -404,7 +428,9 @@ export default function BoardPage() {
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-pisom-500 focus:outline-none"
                     />
                     <div className="mt-1.5 flex gap-1.5">
-                      <button type="submit" className="rounded-lg bg-pisom-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-pisom-700">Criar</button>
+                      <button type="submit" disabled={submitting} className="rounded-lg bg-pisom-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-pisom-700 disabled:opacity-50">
+                        {submitting ? 'Criando...' : 'Criar'}
+                      </button>
                       <button type="button" onClick={() => setAddingToList(null)} className="rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100">Cancelar</button>
                     </div>
                   </form>
