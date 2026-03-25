@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { Plus, Kanban, Users, Clock, MoreHorizontal, Archive } from 'lucide-react';
+import { Plus, Kanban, Users, Clock } from 'lucide-react';
 
 export default function BoardsPage() {
   const [boards, setBoards] = useState<any[]>([]);

@@ -8,7 +8,10 @@ export class GestaoPermissionGuard implements CanActivate {
   constructor(private reflector: Reflector, private prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const permission = this.reflector.get<string>(GESTAO_PERMISSION_KEY, context.getHandler());
+    const permission = this.reflector.getAllAndOverride<string>(GESTAO_PERMISSION_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     if (!permission) return true;
 
     const request = context.switchToHttp().getRequest();
