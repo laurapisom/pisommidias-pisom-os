@@ -33,6 +33,10 @@ import {
   XCircle,
   Loader2,
   Landmark,
+  HardDrive,
+  Webhook,
+  Link2,
+  Link2Off,
 } from 'lucide-react';
 
 const TABS = [
@@ -147,6 +151,21 @@ export default function SettingsPage() {
   const [sicoobSyncProgress, setSicoobSyncProgress] = useState<number>(0);
   const [sicoobSyncDetail, setSicoobSyncDetail] = useState<string>('');
 
+  // Google Drive state
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveTesting, setDriveTesting] = useState(false);
+  const [driveTestResult, setDriveTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [driveLoaded, setDriveLoaded] = useState(false);
+
+  // n8n state
+  const [n8nWebhookUrl, setN8nWebhookUrl] = useState('');
+  const [n8nApiKey, setN8nApiKey] = useState('');
+  const [n8nSaving, setN8nSaving] = useState(false);
+  const [n8nMsg, setN8nMsg] = useState('');
+  const [n8nTesting, setN8nTesting] = useState(false);
+  const [n8nTestResult, setN8nTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [n8nLoaded, setN8nLoaded] = useState(false);
+
   // Load job titles when cargos tab is activated
   useEffect(() => {
     if (activeTab !== 'cargos') return;
@@ -217,6 +236,30 @@ export default function SettingsPage() {
       setSicoobLoaded(true);
     })();
   }, [activeTab, sicoobLoaded]);
+
+  // Load Google Drive integration
+  useEffect(() => {
+    if (activeTab !== 'integracoes' || driveLoaded) return;
+    api.getGoogleDriveIntegration()
+      .then(data => { if (data?.isActive) setDriveConnected(true); })
+      .catch(() => {})
+      .finally(() => setDriveLoaded(true));
+  }, [activeTab, driveLoaded]);
+
+  // Load n8n integration
+  useEffect(() => {
+    if (activeTab !== 'integracoes' || n8nLoaded) return;
+    api.getN8nIntegration()
+      .then(data => {
+        if (data?.settings) {
+          const s = data.settings as any;
+          if (s.webhookUrl) setN8nWebhookUrl(s.webhookUrl);
+          if (s.apiKey) setN8nApiKey(s.apiKey);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setN8nLoaded(true));
+  }, [activeTab, n8nLoaded]);
 
   const RESET_LABELS: Record<string, string> = {
     financial: 'Apagando dados financeiros...',
@@ -1474,6 +1517,136 @@ export default function SettingsPage() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Google Drive */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                <HardDrive className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Google Drive</h2>
+                <p className="text-sm text-gray-500">Armazene anexos dos cartões no Google Drive</p>
+              </div>
+              <div className="ml-auto">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${driveConnected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {driveConnected ? 'Conectado' : 'Não conectado'}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {driveConnected ? (
+                <button
+                  onClick={async () => {
+                    await api.disconnectGoogleDrive();
+                    setDriveConnected(false);
+                    setDriveTestResult(null);
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  <Link2Off className="h-4 w-4" />
+                  Desconectar
+                </button>
+              ) : (
+                <p className="text-sm text-gray-500">Configure as credenciais OAuth do Google Drive nas variáveis de ambiente do servidor.</p>
+              )}
+              <button
+                disabled={driveTesting}
+                onClick={async () => {
+                  setDriveTesting(true);
+                  setDriveTestResult(null);
+                  const result = await api.testGoogleDrive().catch(e => ({ ok: false, message: e.message }));
+                  setDriveTestResult(result);
+                  setDriveTesting(false);
+                }}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+              >
+                <RefreshCw className={cn('h-4 w-4', driveTesting && 'animate-spin')} />
+                Testar Conexão
+              </button>
+            </div>
+            {driveTestResult && (
+              <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${driveTestResult.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {driveTestResult.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                {driveTestResult.message}
+              </div>
+            )}
+          </div>
+
+          {/* n8n */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100">
+                <Webhook className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">n8n Automação</h2>
+                <p className="text-sm text-gray-500">Dispare webhooks n8n em eventos dos cartões</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Webhook URL</label>
+                <input
+                  type="url"
+                  value={n8nWebhookUrl}
+                  onChange={e => setN8nWebhookUrl(e.target.value)}
+                  placeholder="https://your-n8n.com/webhook/..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">API Key (opcional)</label>
+                <input
+                  type="password"
+                  value={n8nApiKey}
+                  onChange={e => setN8nApiKey(e.target.value)}
+                  placeholder="Chave de autenticação do n8n"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-pisom-500 focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  disabled={n8nSaving || !n8nWebhookUrl}
+                  onClick={async () => {
+                    setN8nSaving(true);
+                    setN8nMsg('');
+                    try {
+                      await api.saveN8nIntegration({ webhookUrl: n8nWebhookUrl, apiKey: n8nApiKey });
+                      setN8nMsg('Configuração salva!');
+                    } catch { setN8nMsg('Erro ao salvar'); }
+                    setN8nSaving(false);
+                    setTimeout(() => setN8nMsg(''), 3000);
+                  }}
+                  className="flex items-center gap-2 rounded-lg bg-pisom-600 px-4 py-2 text-sm font-medium text-white hover:bg-pisom-700 disabled:opacity-50"
+                >
+                  {n8nSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                  Salvar
+                </button>
+                <button
+                  disabled={n8nTesting || !n8nWebhookUrl}
+                  onClick={async () => {
+                    setN8nTesting(true);
+                    setN8nTestResult(null);
+                    const result = await api.testN8n().catch(e => ({ ok: false, message: e.message }));
+                    setN8nTestResult(result);
+                    setN8nTesting(false);
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <RefreshCw className={cn('h-4 w-4', n8nTesting && 'animate-spin')} />
+                  Testar
+                </button>
+              </div>
+              {n8nMsg && <p className="text-sm text-green-600">{n8nMsg}</p>}
+              {n8nTestResult && (
+                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${n8nTestResult.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {n8nTestResult.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                  {n8nTestResult.message}
+                </div>
+              )}
             </div>
           </div>
         </div>

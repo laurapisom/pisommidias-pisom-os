@@ -15,6 +15,7 @@ const ROUTE_PERMISSION_MAP: Record<string, string> = {
   '/financial': 'financial',
   '/collaborators': 'collaborators',
   '/settings': 'settings',
+  '/gestao-operacional': 'gestao_operacional',
 };
 
 function getRequiredPermission(pathname: string): string | null {
