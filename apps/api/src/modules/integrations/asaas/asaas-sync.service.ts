@@ -135,6 +135,12 @@ export class AsaasSyncService {
       }
       const grandTotal = customerTotal + subscriptionTotal + paymentTotal + expenseTotal;
 
+      this.logger.log(`Sync counts for org ${organizationId}: ${customerTotal}C ${subscriptionTotal}S ${paymentTotal}P ${expenseTotal}E (total: ${grandTotal})${dateFilter ? ` [since ${dateFilter}]` : ' [full]'}`);
+      await this.updateProgress(
+        integration.id, 1, 'counting',
+        `Encontrados: ${customerTotal} clientes, ${subscriptionTotal} assinaturas, ${paymentTotal} cobranças${expenseSkipped ? '' : `, ${expenseTotal} transações`}${dateFilter ? ` (desde ${dateFilter})` : ''}`,
+      );
+
       let processed = 0;
 
       // Sync Customers
@@ -172,6 +178,7 @@ export class AsaasSyncService {
       this.categoryCache.clear();
       this.asaasBankAccountId = undefined;
       this.cashBankAccountId = undefined;
+      this.invoiceNumberCounter = 0;
       clearTimeout(syncTimeout);
 
       await this.prisma.integration.update({
@@ -197,6 +204,7 @@ export class AsaasSyncService {
       this.categoryCache.clear();
       this.asaasBankAccountId = undefined;
       this.cashBankAccountId = undefined;
+      this.invoiceNumberCounter = 0;
       const isCancelled = error.message === 'Sincronização cancelada pelo usuário';
       await this.prisma.integration.update({
         where: { id: integration.id },
@@ -433,6 +441,14 @@ export class AsaasSyncService {
     organizationId: string, apiKey: string, sandbox: boolean, dateFilter: string | undefined,
     grandTotal: number, processedBefore: number, integrationId: string, phaseTotal: number,
   ): Promise<number> {
+    // Auto-numbering: get the highest existing invoice number
+    const lastInvoice = await this.prisma.invoice.findFirst({
+      where: { organizationId, number: { not: null } },
+      orderBy: { number: 'desc' },
+      select: { number: true },
+    });
+    this.invoiceNumberCounter = lastInvoice?.number ? parseInt(lastInvoice.number) || 0 : 0;
+
     // Pré-carregar IDs e status já sincronizados
     const existingPayments = new Map(
       (await this.prisma.invoice.findMany({
@@ -645,6 +661,7 @@ export class AsaasSyncService {
   private contractCache = new Map<string, string | null>();
   private asaasBankAccountId: string | null | undefined = undefined;
   private cashBankAccountId: string | null | undefined = undefined;
+  private invoiceNumberCounter = 0;
 
   private async findOrCreateAsaasBankAccount(organizationId: string): Promise<string> {
     if (this.asaasBankAccountId !== undefined && this.asaasBankAccountId) return this.asaasBankAccountId;
@@ -695,7 +712,7 @@ export class AsaasSyncService {
       account = await this.prisma.bankAccount.create({
         data: {
           organizationId,
-          name: 'Caixa',
+          name: 'Caixa Físico',
           type: 'CASH',
           initialBalance: 0,
           color: '#10b981',
@@ -778,8 +795,10 @@ export class AsaasSyncService {
           data,
         });
       } else {
+        this.invoiceNumberCounter++;
+        const number = String(this.invoiceNumberCounter).padStart(6, '0');
         await this.prisma.invoice.create({
-          data: { ...data, organizationId },
+          data: { ...data, organizationId, number },
         });
       }
     });

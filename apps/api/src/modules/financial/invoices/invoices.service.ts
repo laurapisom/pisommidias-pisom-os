@@ -83,6 +83,7 @@ export class InvoicesService {
         include: {
           contract: { select: { id: true, title: true, companyId: true } },
           company: { select: { id: true, name: true } },
+          bankAccount: { select: { id: true, name: true, type: true } },
         },
         orderBy: { dueDate: 'desc' },
         skip: (page - 1) * limit,

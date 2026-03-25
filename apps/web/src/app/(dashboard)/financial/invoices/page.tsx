@@ -213,13 +213,14 @@ export default function InvoicesPage() {
   const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
   const exportCSV = () => {
-    const headers = ['Nº', 'Descrição', 'Empresa', 'Valor', 'Vencimento', 'Status', 'Tipo'];
+    const headers = ['Nº', 'Descrição', 'Empresa', 'Valor', 'Vencimento', 'Conta', 'Status', 'Tipo'];
     const rows = invoices.map((inv: any) => [
       inv.number,
       inv.description || inv.contract?.title || '',
       inv.company?.name || '',
       Number(inv.totalValue).toFixed(2),
       new Date(inv.dueDate).toLocaleDateString('pt-BR'),
+      inv.bankAccount?.name || '',
       (statusConfig[inv.status] || statusConfig.PENDING).label,
       typeLabels[inv.type] || inv.type,
     ]);
@@ -363,6 +364,7 @@ export default function InvoicesPage() {
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Empresa</th>
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Valor</th>
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Vencimento</th>
+              <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Conta</th>
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
               <th className="px-5 py-3 text-left text-xs font-medium uppercase text-gray-500">Ações</th>
             </tr>
@@ -381,7 +383,7 @@ export default function InvoicesPage() {
                 </tr>
               ))
             ) : invoices.length === 0 ? (
-              <tr><td colSpan={8} className="px-5 py-16 text-center">
+              <tr><td colSpan={9} className="px-5 py-16 text-center">
                 <Receipt className="mx-auto h-10 w-10 text-gray-300" />
                 <p className="mt-3 text-sm font-medium text-gray-500">Nenhuma fatura encontrada</p>
                 <p className="mt-1 text-xs text-gray-400">{search || filter || startDate ? 'Tente ajustar os filtros' : 'Gere faturas a partir dos contratos ou crie uma avulsa'}</p>
@@ -410,6 +412,9 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-5 py-3 text-sm font-semibold text-gray-900">{fmt(Number(inv.totalValue))}</td>
                     <td className="px-5 py-3 text-sm text-gray-600">{new Date(inv.dueDate).toLocaleDateString('pt-BR')}</td>
+                    <td className="px-5 py-3 text-sm text-gray-600">
+                      {inv.bankAccount ? inv.bankAccount.name : <span className="text-gray-400">—</span>}
+                    </td>
                     <td className="px-5 py-3">
                       <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium', st.color)}>{st.label}</span>
                     </td>
