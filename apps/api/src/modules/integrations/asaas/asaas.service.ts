@@ -232,6 +232,46 @@ export class AsaasService {
     }
   }
 
+  async *fetchPaymentsBySubscription(
+    subscriptionId: string,
+    apiKey: string,
+    sandbox: boolean,
+  ): AsyncGenerator<AsaasPayment[]> {
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
+    while (hasMore) {
+      const res = await this.httpGet<AsaasListResponse<AsaasPayment>>(
+        `/payments?subscription=${subscriptionId}&offset=${offset}&limit=${limit}`,
+        apiKey,
+        sandbox,
+      );
+      if (res.data.length > 0) yield res.data;
+      hasMore = res.hasMore;
+      offset += limit;
+    }
+  }
+
+  async *fetchPaymentsByCustomer(
+    customerId: string,
+    apiKey: string,
+    sandbox: boolean,
+  ): AsyncGenerator<AsaasPayment[]> {
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
+    while (hasMore) {
+      const res = await this.httpGet<AsaasListResponse<AsaasPayment>>(
+        `/payments?customer=${customerId}&offset=${offset}&limit=${limit}`,
+        apiKey,
+        sandbox,
+      );
+      if (res.data.length > 0) yield res.data;
+      hasMore = res.hasMore;
+      offset += limit;
+    }
+  }
+
   async *fetchAllFinancialTransactions(
     apiKey: string,
     sandbox: boolean,

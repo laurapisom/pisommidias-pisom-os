@@ -158,10 +158,18 @@ export class AsaasSyncService {
       processed += subscriptionCount;
 
       // Sync Payments
-      const paymentCount = await this.syncPayments(
+      let paymentCount = await this.syncPayments(
         organizationId, integration.apiKey, integration.sandbox, dateFilter,
         grandTotal, processed, integration.id, paymentTotal,
       );
+
+      // Fallback: if global /payments returned 0, try fetching per subscription/customer
+      if (paymentCount === 0) {
+        this.logger.warn(`Global /payments returned 0 for org ${organizationId}. Trying fallback via subscriptions & customers...`);
+        paymentCount = await this.syncPaymentsFallback(
+          organizationId, integration.apiKey, integration.sandbox, integration.id,
+        );
+      }
       processed += paymentCount;
 
       // Sync Expenses (financial transactions from Asaas)
@@ -501,6 +509,99 @@ export class AsaasSyncService {
     }
     this.logger.log(`Payments: ${newCount} new, ${updatedCount} updated, ${skipped} skipped for org ${organizationId}`);
     return checked;
+  }
+
+  // ─── Fallback: Sync Payments via Subscriptions & Customers ────────────
+
+  private async syncPaymentsFallback(
+    organizationId: string, apiKey: string, sandbox: boolean, integrationId: string,
+  ): Promise<number> {
+    // Pre-load existing invoices to avoid duplicates
+    const existingPaymentIds = new Set(
+      (await this.prisma.invoice.findMany({
+        where: { organizationId, asaasPaymentId: { not: null } },
+        select: { asaasPaymentId: true },
+      })).map(p => p.asaasPaymentId),
+    );
+
+    let totalFound = 0;
+    let totalCreated = 0;
+    const seenPaymentIds = new Set<string>();
+
+    // Strategy 1: Fetch payments per subscription
+    const contracts = await this.prisma.contract.findMany({
+      where: { organizationId, asaasSubscriptionId: { not: null } },
+      select: { asaasSubscriptionId: true },
+    });
+
+    if (contracts.length > 0) {
+      await this.updateProgress(integrationId, 50, 'payments', `Buscando cobranças via ${contracts.length} assinaturas...`);
+      this.logger.log(`Fallback: fetching payments for ${contracts.length} subscriptions`);
+
+      for (const contract of contracts) {
+        await this.checkCancelled(integrationId);
+        try {
+          for await (const batch of this.asaasService.fetchPaymentsBySubscription(
+            contract.asaasSubscriptionId!, apiKey, sandbox,
+          )) {
+            for (const payment of batch) {
+              if (seenPaymentIds.has(payment.id)) continue;
+              seenPaymentIds.add(payment.id);
+              totalFound++;
+              if (!existingPaymentIds.has(payment.id)) {
+                await this.upsertInvoice(organizationId, payment);
+                totalCreated++;
+              }
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to fetch payments for subscription ${contract.asaasSubscriptionId}: ${err.message}`);
+        }
+
+        if (totalFound > 0 && totalFound % 20 === 0) {
+          await this.updateProgress(integrationId, 60, 'payments', `Cobranças via assinaturas: ${totalCreated} novas, ${totalFound} verificadas`);
+        }
+      }
+    }
+
+    // Strategy 2: Fetch payments per customer (catches standalone charges not linked to subscriptions)
+    const companies = await this.prisma.company.findMany({
+      where: { organizationId, asaasCustomerId: { not: null } },
+      select: { asaasCustomerId: true },
+    });
+
+    if (companies.length > 0) {
+      await this.updateProgress(integrationId, 70, 'payments', `Buscando cobranças avulsas via ${companies.length} clientes...`);
+      this.logger.log(`Fallback: fetching payments for ${companies.length} customers`);
+
+      for (const company of companies) {
+        await this.checkCancelled(integrationId);
+        try {
+          for await (const batch of this.asaasService.fetchPaymentsByCustomer(
+            company.asaasCustomerId!, apiKey, sandbox,
+          )) {
+            for (const payment of batch) {
+              if (seenPaymentIds.has(payment.id)) continue;
+              seenPaymentIds.add(payment.id);
+              totalFound++;
+              if (!existingPaymentIds.has(payment.id)) {
+                await this.upsertInvoice(organizationId, payment);
+                totalCreated++;
+              }
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to fetch payments for customer ${company.asaasCustomerId}: ${err.message}`);
+        }
+
+        if (totalFound > 0 && totalFound % 20 === 0) {
+          await this.updateProgress(integrationId, 80, 'payments', `Cobranças: ${totalCreated} novas, ${totalFound} verificadas`);
+        }
+      }
+    }
+
+    this.logger.log(`Fallback payments: ${totalCreated} new, ${totalFound} total found for org ${organizationId}`);
+    return totalFound;
   }
 
   // ─── Expense Sync (Asaas Financial Transactions) ─────────────────────
